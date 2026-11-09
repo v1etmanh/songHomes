@@ -26,7 +26,7 @@ sequenceDiagram
     Booking->>DB: Lưu guest, booking, add-ons, unitNights
     Booking-->>Web: Mã xác nhận + hold
     Guest->>Web: Chọn thanh toán tại homestay
-    Web->>DB: Chuyển hold -> confirmed
+    Web->>DB: Chuyển hold -> pending, tiếp tục khóa lịch
   else Đã chiếm
     Booking-->>Web: DATES_UNAVAILABLE
   end

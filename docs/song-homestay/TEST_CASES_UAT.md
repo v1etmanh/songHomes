@@ -6,7 +6,7 @@
 |---|---|---|---|
 | TC01 | FR03 | Hai khách cùng đặt một căn/ngày | Một booking thành công; booking còn lại nhận DATES_UNAVAILABLE |
 | TC02 | FR04 | Chọn thuê xe 2 ngày | Giá và snapshot dịch vụ có quantity=2 |
-| TC03 | FR05 | Xác nhận thanh toán tại homestay | Hold chuyển confirmed; không tạo giao dịch thật |
+| TC03 | FR05 | Gửi yêu cầu đặt phòng | Hold chuyển pending, tiếp tục khóa lịch; không tạo giao dịch thật |
 | TC04 | FR06 | Nhập Zalo 10–13/12 | Booking nguồn `manual:zalo`; tạo 3 unitNights |
 | TC05 | FR06 | Nhập Facebook 12–14/12 cùng căn | Bị từ chối vì trùng 12/12 |
 | TC06 | FR08 | Đồng bộ Airbnb 20–23 và Booking 22–24 | Thêm 2 booking; sinh 1 cảnh báo đêm 22/09 |
@@ -27,7 +27,7 @@
 - `convex/songHomestay.test.ts`: booking ngoài, quản lý căn/dịch vụ, thanh toán tại chỗ.
 - `convex/residence.test.ts`: khai báo và xác nhận thông tin lưu trú.
 - `shared/ical.test.ts`: parser iCal và sự kiện malformed/cancelled.
-- `tests/e2e/song-homestay.e2e.ts`: luồng trình duyệt từ website khách đến dashboard quản trị, 8 căn, 3 dịch vụ và khu vực iCal.
+- `tests/e2e/song-homestay.e2e.ts`: luồng trình duyệt từ website khách đến dashboard quản trị, 5 cơ sở, 3 dịch vụ và khu vực nhập iCal.
 
 ## Kết quả kiểm tra kỹ thuật
 

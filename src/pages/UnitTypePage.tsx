@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from 'convex/react';
-import { Users } from 'lucide-react';
+import { Bath, BedDouble, MapPin, Ruler, Users } from 'lucide-react';
 
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -22,6 +22,7 @@ const AVAILABILITY_WINDOW_DAYS = 90;
 
 export function UnitTypePage() {
   const { propertySlug, unitTypeSlug } = useParams<{ propertySlug: string; unitTypeSlug: string }>();
+  const [searchParams] = useSearchParams();
   const detail = useQuery(
     api.properties.unitTypeBySlug,
     propertySlug && unitTypeSlug ? { propertySlug, unitTypeSlug } : 'skip',
@@ -33,7 +34,10 @@ export function UnitTypePage() {
       : 'skip',
   );
 
-  const [range, setRange] = useState<{ checkIn?: string; checkOut?: string }>({});
+  const [range, setRange] = useState<{ checkIn?: string; checkOut?: string }>({
+    checkIn: searchParams.get('checkIn') ?? undefined,
+    checkOut: searchParams.get('checkOut') ?? undefined,
+  });
   const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
   const [guest, setGuest] = useState<GuestFormValue>({
     name: '',
@@ -161,6 +165,7 @@ export function UnitTypePage() {
     !!range.checkIn &&
     !!range.checkOut &&
     !!availableUnitId &&
+    detail?.unitType.capacityKnown &&
     guest.name.trim().length > 0 &&
     guest.email.includes('@') &&
     guest.phone.trim().length > 0 &&
@@ -205,10 +210,13 @@ export function UnitTypePage() {
         </div>
         <h1 className="text-3xl font-semibold text-stone-900">{unitType.name}</h1>
         <p className="mt-3 text-stone-600">{unitType.description}</p>
-        <p className="mt-3 flex items-center gap-1.5 text-sm text-stone-500">
-          <Users className="h-4 w-4" aria-hidden="true" />
-          Tối đa {unitType.maxOccupancy} khách
-        </p>
+        <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-stone-600">
+          <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-cyan-700" /> {unitType.address}</span>
+          <span className="flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-cyan-700" /> {unitType.bedrooms ?? '—'} phòng ngủ</span>
+          <span className="flex items-center gap-1.5"><Bath className="h-4 w-4 text-cyan-700" /> {unitType.bathrooms ?? '—'} phòng tắm</span>
+          <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-cyan-700" /> {unitType.maxOccupancy ? `Tối đa ${unitType.maxOccupancy} khách` : 'Liên hệ xác nhận sức chứa'}</span>
+          {unitType.areaSqm ? <span className="flex items-center gap-1.5"><Ruler className="h-4 w-4 text-cyan-700" /> {unitType.areaSqm} m²</span> : null}
+        </div>
         <StayMedia
           propertySlug={detail.property.slug}
           propertyName={detail.property.name}
@@ -218,11 +226,13 @@ export function UnitTypePage() {
         {fromPriceCents !== null ? (
           <p className="mt-4 text-lg font-semibold text-emerald-800">Từ {formatMoney(fromPriceCents, detail.property.currency)}/đêm</p>
         ) : null}
+        {unitType.highlights.length ? <div className="mt-5 flex flex-wrap gap-2">{unitType.highlights.map((item) => <span key={item} className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800">{item}</span>)}</div> : null}
+        {unitType.policies ? <div className="mt-6 grid gap-3 rounded-2xl bg-stone-50 p-5 text-sm text-stone-600 sm:grid-cols-2"><p><strong>Nhận phòng:</strong> {unitType.policies.checkIn}</p><p><strong>Trả phòng:</strong> {unitType.policies.checkOut}</p><p><strong>Trẻ em:</strong> {unitType.policies.children}</p><p><strong>Vật nuôi:</strong> {unitType.policies.pets}</p><p className="sm:col-span-2"><strong>Hủy đặt phòng:</strong> {unitType.policies.cancellation}</p></div> : null}
       </div>
 
-      {unitType.comingSoon || !ratePlan ? (
+      {unitType.comingSoon || !ratePlan || !unitType.capacityKnown ? (
         <div className="card p-8 text-center text-stone-600">
-          <p>This stay isn't open for booking yet — check back soon.</p>
+          <p>{!unitType.capacityKnown ? 'Sức chứa của chỗ nghỉ này đang được cập nhật. Vui lòng liên hệ 0911.388.703 để được tư vấn và giữ lịch.' : 'Chỗ nghỉ chưa mở đặt phòng. Vui lòng quay lại sau.'}</p>
         </div>
       ) : (
         <div className="grid gap-8 lg:grid-cols-2">
@@ -295,7 +305,7 @@ export function UnitTypePage() {
 
             <div className="card p-6">
               <h2 className="mb-4 text-lg font-semibold text-stone-900">Thông tin người đặt</h2>
-              <GuestForm value={guest} onChange={setGuest} maxOccupancy={unitType.maxOccupancy} />
+              <GuestForm value={guest} onChange={setGuest} maxOccupancy={unitType.maxOccupancy ?? 20} />
             </div>
 
             {pricePreview ? (

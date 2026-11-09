@@ -12,9 +12,9 @@ Mở hai tab: `/p/song-homestay` và `/admin/command`.
 
 ## Demo
 
-1. **Bài toán (45 giây):** 8 căn, nhiều nguồn, Excel, khoảng 4 double booking/tháng.
+1. **Bài toán (45 giây):** 5 cơ sở, nhiều nguồn, Excel và nguy cơ double booking.
 2. **Khách đặt web (2 phút):** chọn căn/ngày, thuê xe hoặc vé Bà Nà, nhập khách, xác nhận thanh toán tại homestay.
-3. **Lịch tập trung (1 phút):** booking vừa tạo xuất hiện trên calendar và khóa ngày.
+3. **Lịch tập trung (1 phút):** yêu cầu vừa tạo xuất hiện ở trạng thái Chờ xác nhận và khóa ngày.
 4. **Booking Zalo (1 phút):** admin nhập booking ngoài; thử nhập ngày trùng để chứng minh hệ thống từ chối.
 5. **Double booking iCal (2 phút):** chọn kịch bản Airbnb 20–23/09 và Booking.com 22–24/09; bấm đồng bộ; chỉ ra đêm trùng 22/09.
 6. **Xử lý (1 phút):** chuyển một booking sang căn còn trống; cảnh báo biến mất, giá giữ nguyên.

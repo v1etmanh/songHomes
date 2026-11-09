@@ -14,6 +14,11 @@ import { ConfirmationPage } from './pages/ConfirmationPage';
 import { ManageBookingPage } from './pages/ManageBookingPage';
 import { AboutPage } from './pages/AboutPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { SongStaysPage } from './pages/SongStaysPage';
+import { SongExperiencesPage } from './pages/SongExperiencesPage';
+import { SongAboutPage } from './pages/SongAboutPage';
+import { SongContactPage } from './pages/SongContactPage';
+import { SongAdminPage } from './pages/SongAdminPage';
 import { PublicShowcasePage } from './pages/PublicShowcasePage';
 import { PublicShowcaseBoundaryPage } from './pages/PublicShowcaseBoundaryPage';
 import { PublicOperationsTourPage } from './pages/PublicOperationsTourPage';
@@ -101,6 +106,11 @@ createRoot(rootElement).render(
           <Route element={<AppLayout />}>
             <Route path="/" element={PUBLIC_SHOWCASE.enabled ? <PublicShowcasePage /> : <HomePage />} />
             <Route path="/p/:propertySlug" element={<PropertyPage />} />
+            <Route path="/p/song-homestay/stays" element={<SongStaysPage />} />
+            <Route path="/p/song-homestay/experiences" element={<SongExperiencesPage />} />
+            <Route path="/p/song-homestay/about" element={<SongAboutPage />} />
+            <Route path="/p/song-homestay/contact" element={<SongContactPage />} />
+            <Route path="/p/song-homestay/booking" element={<SongStaysPage />} />
             <Route path="/p/:propertySlug/stay/:unitTypeSlug" element={<UnitTypePage />} />
             <Route path="/checkout/:bookingId" element={<CheckoutPage />} />
             <Route path="/confirmation/:code" element={<ConfirmationPage />} />
@@ -112,7 +122,16 @@ createRoot(rootElement).render(
             <Route path="/about" element={<AboutPage />} />
             <Route path="/admin/login" element={staffLoginElement} />
             <Route path="/admin" element={staffShellElement}>
-              <Route index element={<Navigate to="/admin/command" replace />} />
+              <Route index element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="dashboard" element={<SongAdminPage section="dashboard" />} />
+              <Route path="accommodations" element={<SongAdminPage section="accommodations" />} />
+              <Route path="bookings" element={<SongAdminPage section="bookings" />} />
+              <Route path="calendar" element={<SongAdminPage section="calendar" />} />
+              <Route path="ical" element={<SongAdminPage section="ical" />} />
+              <Route path="services" element={<SongAdminPage section="services" />} />
+              <Route path="song-reports" element={<SongAdminPage section="reports" />} />
+              <Route path="conflicts" element={<SongAdminPage section="conflicts" />} />
+              <Route path="residence" element={<SongAdminPage section="residence" />} />
               <Route path="command" element={staffCommandElement} />
                   <Route path="front-desk" element={AdminFrontDeskPage ? <Suspense fallback={<p>Loading front desk…</p>}><AdminFrontDeskPage /></Suspense> : <PublicShowcaseBoundaryPage />} />
                   <Route path="housekeeping" element={AdminHousekeepingPage ? <Suspense fallback={<p>Loading housekeeping…</p>}><AdminHousekeepingPage /></Suspense> : <PublicShowcaseBoundaryPage />} />

@@ -3,6 +3,13 @@ import { useAuthActions } from '@convex-dev/auth/react';
 import { useMutation, useQuery } from 'convex/react';
 import {
   BedDouble,
+  Building2,
+  CalendarDays,
+  ChartNoAxesCombined,
+  CircleAlert,
+  ContactRound,
+  House,
+  UploadCloud,
   BookOpenCheck,
   CalendarClock,
   ChevronDown,
@@ -71,6 +78,19 @@ const NAV_GROUPS = [
   },
 ] as const;
 
+const SONG_NAV_ITEMS = [
+  { to: '/admin/dashboard', label: 'Dashboard', icon: House },
+  { to: '/admin/accommodations', label: 'Quản lý chỗ nghỉ', icon: Building2 },
+  { to: '/admin/bookings', label: 'Quản lý booking', icon: BookOpenCheck },
+  { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
+  { to: '/admin/ical', label: 'Đồng bộ iCal', icon: UploadCloud },
+  { to: '/admin/services', label: 'Dịch vụ bổ sung', icon: Sparkles },
+  { to: '/admin/song-reports', label: 'Báo cáo thống kê', icon: ChartNoAxesCombined },
+  { to: '/admin/conflicts', label: 'Cảnh báo', icon: CircleAlert },
+  { to: '/admin/residence', label: 'Tạm trú / Tạm vắng', icon: ContactRound },
+  { to: '/admin/settings', label: 'Cài đặt', icon: Settings },
+] as const;
+
 export function AdminShell() {
   const gate = useStaffGate();
   const { signOut } = useAuthActions();
@@ -116,12 +136,13 @@ export function AdminShell() {
     return (
       <div className="mx-auto max-w-md space-y-4 py-12 text-center">
         <ShieldAlert className="mx-auto h-8 w-8 text-amber-600" aria-hidden="true" />
-        <h1 className="text-xl font-semibold text-stone-900">Awaiting staff access</h1>
+        <h1 className="text-xl font-semibold text-stone-900">Đang chờ cấp quyền · Awaiting staff access</h1>
         <p className="text-sm text-stone-600">
-          You are signed in, but an owner has not assigned you to a property yet.
+          Bạn đã đăng nhập nhưng chưa được gán vào cơ sở nào. Vui lòng liên hệ chủ sở hữu.
+          <span className="mt-1 block text-stone-500">You are signed in, but an owner has not assigned you to a property yet.</span>
         </p>
         <button type="button" className="btn-secondary" onClick={() => void signOut()}>
-          Sign out
+          Đăng xuất · Sign out
         </button>
       </div>
     );
@@ -161,11 +182,13 @@ export function AdminShell() {
     }
   }
 
+  const isSong = property.slug === 'song-homestay';
+
   return (
-    <div className="-mx-4 -my-8 min-h-[calc(100vh-7rem)] bg-stone-100 sm:-mx-6 lg:-mx-8">
-      <header className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="min-w-0 flex-1">
+    <div className={`min-h-screen ${isSong ? 'bg-[#f1f7ff]' : 'bg-stone-100'}`}>
+      <header className={`sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur ${isSong ? 'lg:ml-60' : ''}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className={property.slug === 'song-homestay' ? 'hidden' : 'min-w-0 flex-1'}>
             <label htmlFor="active-property" className="sr-only">Active property</label>
             <select
               id="active-property"
@@ -178,7 +201,7 @@ export function AdminShell() {
               ))}
             </select>
           </div>
-          <div className="relative order-last w-full lg:order-none lg:w-[min(34rem,42vw)]">
+          <div className={`relative order-last w-full sm:order-none ${property.slug === 'song-homestay' ? 'sm:w-[min(38rem,55vw)]' : 'lg:w-[min(34rem,42vw)]'}`}>
             <label htmlFor="staff-global-search" className="sr-only">Search staff records</label>
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-stone-400" aria-hidden="true" />
             <input
@@ -186,7 +209,7 @@ export function AdminShell() {
               className="field-input pl-9"
               value={globalSearch}
               onChange={(event) => setGlobalSearch(event.target.value)}
-              placeholder="Search guests, bookings, units, quotes, tasks, folios…"
+              placeholder={property.slug === 'song-homestay' ? 'Tìm khách, booking, chỗ nghỉ…' : 'Search guests, bookings, units, quotes, tasks, folios…'}
               autoComplete="off"
             />
             {globalSearch.trim().length >= 2 ? (
@@ -260,10 +283,12 @@ export function AdminShell() {
         </div>
       </header>
 
-      <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="border-b border-stone-200 bg-stone-950 text-stone-200 lg:min-h-[calc(100vh-7rem)] lg:border-b-0 lg:border-r">
-          <nav aria-label="Staff operations" className="flex gap-2 overflow-x-auto p-3 lg:block lg:space-y-5 lg:p-4">
-            {NAV_GROUPS.map((group) => (
+      {/* Song: the sidebar is position:fixed (out of grid flow), so the content is offset with margin instead of a grid column. */}
+      <div className={isSong ? '' : 'lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]'}>
+        <aside className={`border-b text-stone-200 lg:min-h-screen lg:border-b-0 lg:border-r ${property.slug === 'song-homestay' ? 'border-sky-900 bg-gradient-to-b from-[#0b3854] via-[#0d4f70] to-[#0b3854] lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-60 lg:flex-col lg:overflow-y-auto' : 'border-stone-200 bg-stone-950'}`}>
+          {property.slug === 'song-homestay' ? <div className="hidden border-b border-white/10 px-7 py-8 lg:block"><div className="flex items-center gap-3 text-white"><span className="grid h-12 w-12 place-items-center rounded-full bg-white/10"><Gauge className="h-7 w-7 text-cyan-200" /></span><div><p className="text-xl font-extrabold leading-5">Sóng</p><p className="text-xl font-extrabold leading-5">Homestay</p></div></div></div> : null}
+          <nav aria-label="Staff operations" className="flex gap-2 overflow-x-auto p-3 lg:block lg:shrink-0 lg:space-y-5 lg:overflow-visible lg:p-4">
+            {property.slug === 'song-homestay' ? <div className="flex gap-1 lg:block lg:space-y-1">{SONG_NAV_ITEMS.map((item) => { const Icon=item.icon; return <NavLink key={item.to} to={item.to} className={({isActive}) => `flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold transition ${isActive ? 'bg-[#2d83c5] text-white shadow-lg shadow-sky-950/20' : 'text-sky-50/85 hover:bg-white/10 hover:text-white'}`}><Icon className="h-5 w-5" />{item.label}</NavLink>; })}</div> : NAV_GROUPS.map((group) => (
               <div key={group.label} className="shrink-0 lg:space-y-1">
                 <p className="hidden px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 lg:block">
                   {group.label}
@@ -290,8 +315,9 @@ export function AdminShell() {
               </div>
             ))}
           </nav>
+          {property.slug === 'song-homestay' ? <div className="mx-4 mb-4 mt-auto hidden shrink-0 overflow-hidden rounded-2xl lg:[@media(min-height:820px)]:block"><img src="/song-homestay/hero.webp" alt="Biển Mỹ Khê" className="h-40 w-full object-cover opacity-90" /></div> : null}
         </aside>
-        <div className="min-w-0 p-4 sm:p-6 lg:p-8">
+        <div className={`min-w-0 p-4 sm:p-6 lg:p-8 ${isSong ? 'text-slate-800 lg:ml-60' : ''}`}>
           <Outlet context={{ property, commandCenterEnabled, enabledFeatures } satisfies AdminPropertyContext} />
         </div>
       </div>

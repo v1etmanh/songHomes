@@ -3,6 +3,52 @@ import { query } from './_generated/server';
 import { addDays } from '../shared/pricing';
 import { requirePropertyCapability } from './staff';
 
+/** Public property-wide search used by the Sóng landing and listing pages. */
+export const searchProperty = query({
+  args: {
+    propertySlug: v.string(),
+    checkIn: v.string(),
+    checkOut: v.string(),
+    guests: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(args.checkOut) || args.checkOut <= args.checkIn) {
+      return { valid: false, unitTypeIds: [], reason: 'Ngày trả phòng phải sau ngày nhận phòng.' };
+    }
+    if (!Number.isInteger(args.guests) || args.guests < 1) {
+      return { valid: false, unitTypeIds: [], reason: 'Số khách không hợp lệ.' };
+    }
+    const property = await ctx.db
+      .query('properties')
+      .withIndex('by_slug', (q) => q.eq('slug', args.propertySlug))
+      .first();
+    if (!property?.active) return { valid: false, unitTypeIds: [], reason: 'Không tìm thấy cơ sở.' };
+    const unitTypes = await ctx.db
+      .query('unitTypes')
+      .withIndex('by_property', (q) => q.eq('propertyId', property._id))
+      .collect();
+    const available: typeof unitTypes[number]['_id'][] = [];
+    for (const unitType of unitTypes) {
+      if (unitType.bookingMode !== 'nightly' || unitType.comingSoon || unitType.capacityKnown === false || unitType.maxOccupancy < args.guests) continue;
+      const units = await ctx.db
+        .query('units')
+        .withIndex('by_type', (q) => q.eq('unitTypeId', unitType._id))
+        .collect();
+      let typeAvailable = false;
+      for (const unit of units) {
+        if (unit.status !== 'active' || (unit.bookableFrom && args.checkIn < unit.bookableFrom)) continue;
+        const conflict = await ctx.db
+          .query('unitNights')
+          .withIndex('by_unit_date', (q) => q.eq('unitId', unit._id).gte('date', args.checkIn).lt('date', args.checkOut))
+          .first();
+        if (!conflict) { typeAvailable = true; break; }
+      }
+      if (typeAvailable) available.push(unitType._id);
+    }
+    return { valid: true, unitTypeIds: available, reason: available.length ? null : 'Không còn chỗ nghỉ phù hợp trong khoảng ngày đã chọn.' };
+  },
+});
+
 /**
  * Public availability for one unit type over a date window: which nights are
  * blocked on each unit. Powers the public date picker (disabled dates) and
@@ -82,7 +128,7 @@ export const tapeForProperty = query({
         q.eq('propertyId', args.propertyId).lt('checkIn', endDate),
       )
       .collect();
-    const active = new Set(['hold', 'confirmed', 'checked_in', 'external', 'blocked']);
+    const active = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked']);
     const bookings = candidates.filter((b) => active.has(b.status) && b.checkOut > args.startDate);
 
     const unitRows = [];

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from 'convex/react';
 import {
   ArrowRight,
@@ -54,6 +54,7 @@ const SERVICE_COPY = [
 export function PropertyPage() {
   const { propertySlug } = useParams<{ propertySlug: string }>();
   const property = useQuery(api.properties.bySlug, propertySlug ? { slug: propertySlug } : 'skip');
+  const navigate = useNavigate();
   const [search, setSearch] = useState({ checkIn: '', checkOut: '', guests: 2 });
 
   if (!propertySlug) return <NotFoundPage />;
@@ -88,7 +89,8 @@ export function PropertyPage() {
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!search.checkIn || !search.checkOut || search.checkOut <= search.checkIn) return;
+    navigate(`/p/song-homestay/stays?checkIn=${encodeURIComponent(search.checkIn)}&checkOut=${encodeURIComponent(search.checkOut)}&guests=${search.guests}`);
   }
 
   return (
@@ -114,7 +116,7 @@ export function PropertyPage() {
               Chạm vào bình yên,<br />tận hưởng từng khoảnh khắc
             </h2>
             <p className="mt-7 max-w-2xl text-base font-medium leading-7 text-white/90 sm:text-lg">
-              8 không gian lưu trú được chăm chút bên biển Mỹ Khê — nơi tiếng sóng, nắng sớm và sự hiếu khách cùng chào đón bạn.
+              Feel at home — Live like a local. Năm không gian lưu trú được chăm chút tại Đà Nẵng, nơi tiếng sóng, nắng sớm và sự hiếu khách cùng chào đón bạn.
             </p>
             <div className="mt-8 flex flex-wrap gap-4 text-sm font-semibold text-white/90">
               <span className="flex items-center gap-2"><Waves className="h-5 w-5" /> 3 phút ra biển</span>
@@ -200,7 +202,7 @@ export function PropertyPage() {
                   <h3 className="font-sans text-xl font-extrabold leading-tight text-[#073b59]">{unitType.name}</h3>
                   <p className="mt-3 line-clamp-2 min-h-12 text-sm leading-6 text-slate-600">{unitType.description}</p>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                    <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-[#20a7b8]" /> Tối đa {unitType.maxOccupancy} khách</span>
+                    <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-[#20a7b8]" /> {unitType.maxOccupancy ? `Tối đa ${unitType.maxOccupancy} khách` : 'Liên hệ sức chứa'}</span>
                     <span className="flex items-center gap-1.5"><Check className="h-4 w-4 text-[#20a7b8]" /> Xác nhận nhanh</span>
                   </div>
                   <div className="mt-6 flex items-end justify-between border-t border-sky-950/10 pt-5">
@@ -250,7 +252,7 @@ export function PropertyPage() {
             <h2 className="mt-2 font-sans text-4xl font-extrabold leading-tight tracking-tight text-[#073b59]">Ở gần biển.<br />Sống chậm một chút.</h2>
             <p className="mt-6 text-base leading-8 text-slate-600">Từ chất liệu tự nhiên, gam xanh dịu mát đến cách đón tiếp chân thành, mỗi căn Sóng được tạo nên để bạn thật sự nghỉ ngơi — không chỉ là tìm một nơi để ngủ.</p>
             <div className="mt-8 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#087795]">8</strong><span className="mt-1 block text-xs text-slate-500">Căn lưu trú</span></div>
+              <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#087795]">5</strong><span className="mt-1 block text-xs text-slate-500">Chỗ nghỉ</span></div>
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#087795]">4.9</strong><span className="mt-1 block text-xs text-slate-500">Điểm yêu thích</span></div>
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#087795]">3'</strong><span className="mt-1 block text-xs text-slate-500">Đi bộ ra biển</span></div>
             </div>

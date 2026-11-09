@@ -57,7 +57,7 @@ describe('Consensus Commons seed migration', () => {
       .collect())).toHaveLength(1);
   });
 
-  it('seeds Sóng Homestay — Đà Nẵng with 8 units, 3 addOns, and mock iCal feeds on Phòng A', async () => {
+  it('seeds Sóng Homestay — Đà Nẵng with exactly 5 named accommodations and 3 services', async () => {
     const t = convexTest(schema, modules);
     await t.mutation((internal as any).seed.run, {});
 
@@ -75,19 +75,20 @@ describe('Consensus Commons seed migration', () => {
         .query('addOns')
         .withIndex('by_property', (q) => q.eq('propertyId', prop._id))
         .collect();
-      return { prop, units, addOns };
+      const unitTypes = await ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', prop._id)).collect();
+      return { prop, units, unitTypes, addOns };
     });
 
     expect(songData).not.toBeNull();
     expect(songData!.prop.currency).toBe('VND');
-    expect(songData!.units).toHaveLength(8);
+    expect(songData!.prop).toMatchObject({ phone: '0911.388.703', email: 'Songhomestay@gmail.com' });
+    expect(songData!.units).toHaveLength(5);
+    expect(songData!.unitTypes).toHaveLength(5);
     expect(songData!.addOns).toHaveLength(3);
-
-    const phongA = songData!.units.find((u) => u.slug === 'phong-a-can-ho-2pn');
-    expect(phongA).toBeDefined();
-    expect(phongA!.icalImports).toEqual([
-      { url: '/mock-ical/airbnb-phong-a.ics', label: 'Airbnb' },
-      { url: '/mock-ical/booking-phong-a.ics', label: 'Booking.com' },
+    expect(songData!.units.map((u) => u.slug)).toEqual([
+      'song-garden-house', 'song-sea-view-apartment', 'song-coastal-apartment', 'song-pool-villa', 'song-rooftop-house',
     ]);
+    expect(songData!.units.every((unit) => unit.icalImports.length === 0)).toBe(true);
+    expect(songData!.unitTypes.find((row) => row.slug === 'song-rooftop-house')).toMatchObject({ capacityKnown: false, maxOccupancy: 0, bedrooms: 6, bathrooms: 6 });
   });
 });

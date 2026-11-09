@@ -471,7 +471,7 @@ export const tapeForApiKey = internalQuery({
         q.eq('propertyId', property._id).lt('checkIn', endDate),
       )
       .collect();
-    const active = new Set(['hold', 'confirmed', 'checked_in', 'external', 'blocked']);
+    const active = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked']);
     const bookings = candidates.filter((b) => active.has(b.status) && b.checkOut > args.startDate);
 
     return {

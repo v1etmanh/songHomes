@@ -11,7 +11,7 @@
 
 ## Business need
 
-Sóng Homestay vận hành 8 căn và nhận booking từ Airbnb, Booking.com, Zalo, Facebook và khách trực tiếp. Lịch phân tán trong Excel làm tăng nguy cơ double booking, đặc biệt trong mùa cao điểm. Dịch vụ thuê xe máy, vé Bà Nà Hills và đưa đón sân bay cũng chưa được quản lý cùng booking.
+Sóng Homestay vận hành 5 cơ sở lưu trú và nhận booking từ Airbnb, Booking.com, Zalo, Facebook và khách trực tiếp. Lịch phân tán trong Excel làm tăng nguy cơ double booking, đặc biệt trong mùa cao điểm. Dịch vụ thuê xe máy, vé Bà Nà Hills và đưa đón sân bay cũng chưa được quản lý cùng booking.
 
 ## Mục tiêu SMART
 
@@ -30,7 +30,7 @@ Sóng Homestay vận hành 8 căn và nhận booking từ Airbnb, Booking.com, Z
 
 - Website xem căn, lịch trống, giá, chọn ngày và tạo booking.
 - Dịch vụ thuê xe, vé Bà Nà Hills, đưa đón sân bay.
-- Dashboard booking và calendar tập trung cho 8 căn.
+- Dashboard booking và calendar tập trung cho 5 cơ sở.
 - Nhập booking Zalo, Facebook, điện thoại, khách vãng lai.
 - iCal giả lập Airbnb/Booking.com, đồng bộ thủ công và định kỳ.
 - Phát hiện, cảnh báo và xử lý double booking.

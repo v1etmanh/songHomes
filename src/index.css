@@ -69,8 +69,11 @@ h4 {
   @apply mb-1 block text-sm font-medium text-stone-700;
 }
 
-.field-input {
-  @apply w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100;
+/* In the components layer so utility classes (pl-9, py-2…) can override padding. */
+@layer components {
+  .field-input {
+    @apply w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

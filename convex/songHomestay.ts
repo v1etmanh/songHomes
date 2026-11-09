@@ -6,7 +6,7 @@ import { enumerateNights, generateConfirmationCode } from '../shared/pricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
-const activeBookingStatuses = new Set(['hold', 'confirmed', 'checked_in', 'external', 'blocked']);
+const activeBookingStatuses = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked']);
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -36,6 +36,12 @@ async function requireRead(ctx: Parameters<typeof requirePropertyCapability>[0],
 async function requireWrite(ctx: MutationCtx, propertyId: Id<'properties'>, action: string) {
   if (process.env.DEMO_MODE !== 'true') {
     await requireMutationPropertyCapability(ctx, propertyId, 'booking.write', action);
+  }
+}
+
+async function requireConfigure(ctx: MutationCtx, propertyId: Id<'properties'>, action: string) {
+  if (process.env.DEMO_MODE !== 'true') {
+    await requireMutationPropertyCapability(ctx, propertyId, 'property.configure', action);
   }
 }
 
@@ -73,7 +79,24 @@ export const managementCatalog = query({
       property: { propertyId: property._id, name: property.name, slug: property.slug, currency: property.currency },
       unitTypes: unitTypes
         .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((row) => ({ unitTypeId: row._id, name: row.name, maxOccupancy: row.maxOccupancy })),
+        .map((row) => ({
+          unitTypeId: row._id,
+          name: row.name,
+          slug: row.slug,
+          kind: row.kind,
+          description: row.description,
+          photoUrls: row.photoUrls,
+          maxOccupancy: row.capacityKnown === false ? null : row.maxOccupancy,
+          capacityKnown: row.capacityKnown !== false,
+          address: row.address,
+          accommodationType: row.accommodationType,
+          bedrooms: row.bedrooms,
+          bathrooms: row.bathrooms,
+          areaSqm: row.areaSqm,
+          highlights: row.highlights ?? [],
+          amenities: row.amenities,
+          comingSoon: row.comingSoon,
+        })),
       units: units
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((row) => ({
@@ -83,6 +106,7 @@ export const managementCatalog = query({
           slug: row.slug,
           status: row.status,
           sortOrder: row.sortOrder,
+          icalImports: row.icalImports,
         })),
       addOns: addOns
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -364,5 +388,163 @@ export const updateAddOn = mutation({
       active: args.active,
     });
     return { updated: true };
+  },
+});
+
+export const updateAccommodation = mutation({
+  args: {
+    propertyId: v.id('properties'),
+    unitTypeId: v.id('unitTypes'),
+    name: v.string(),
+    address: v.string(),
+    accommodationType: v.string(),
+    description: v.string(),
+    bedrooms: v.number(),
+    bathrooms: v.number(),
+    areaSqm: v.optional(v.number()),
+    maxOccupancy: v.optional(v.number()),
+    highlights: v.array(v.string()),
+    amenities: v.array(v.string()),
+    photoUrls: v.array(v.string()),
+    comingSoon: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await requireConfigure(ctx, args.propertyId, 'song.accommodation.update');
+    const row = await ctx.db.get(args.unitTypeId);
+    if (!row || row.propertyId !== args.propertyId) throw new ConvexError('ACCOMMODATION_NOT_FOUND');
+    if (!args.name.trim() || !args.address.trim() || args.bedrooms < 0 || args.bathrooms < 0) {
+      throw new ConvexError('INVALID_ACCOMMODATION');
+    }
+    await ctx.db.patch(row._id, {
+      name: args.name.trim(),
+      address: args.address.trim(),
+      accommodationType: args.accommodationType.trim(),
+      description: args.description.trim(),
+      bedrooms: args.bedrooms,
+      bathrooms: args.bathrooms,
+      areaSqm: args.areaSqm,
+      maxOccupancy: args.maxOccupancy ?? 0,
+      capacityKnown: args.maxOccupancy !== undefined,
+      highlights: args.highlights.map((item) => item.trim()).filter(Boolean),
+      amenities: args.amenities.map((item) => item.trim()).filter(Boolean),
+      photoUrls: args.photoUrls.map((item) => item.trim()).filter(Boolean),
+      comingSoon: args.comingSoon,
+    });
+    return { updated: true };
+  },
+});
+
+export const updateBookingStatus = mutation({
+  args: {
+    propertyId: v.id('properties'),
+    bookingId: v.id('bookings'),
+    status: v.union(v.literal('confirmed'), v.literal('checked_in'), v.literal('checked_out'), v.literal('cancelled')),
+  },
+  handler: async (ctx, args) => {
+    await requireWrite(ctx, args.propertyId, 'song.booking.status');
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking || booking.propertyId !== args.propertyId) throw new ConvexError('BOOKING_NOT_FOUND');
+    const allowed: Record<string, string[]> = {
+      pending: ['confirmed', 'cancelled'],
+      confirmed: ['checked_in', 'cancelled'],
+      checked_in: ['checked_out'],
+    };
+    if (!allowed[booking.status]?.includes(args.status)) {
+      throw new ConvexError({ code: 'INVALID_STATUS_TRANSITION', message: `Không thể chuyển ${booking.status} sang ${args.status}.` });
+    }
+    if (args.status === 'cancelled') {
+      const nights = await ctx.db.query('unitNights').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).collect();
+      for (const night of nights) await ctx.db.delete(night._id);
+      await markPropertyDirtyInline(ctx, booking.propertyId);
+    }
+    const now = Date.now();
+    await ctx.db.patch(booking._id, {
+      status: args.status,
+      statusHistory: [...booking.statusHistory, { status: args.status, ts: now }],
+      notes: [...booking.notes, { ts: now, text: `Cập nhật trạng thái: ${args.status}`, by: 'Admin Sóng Homestay' }],
+      updatedAt: now,
+    });
+    return { updated: true };
+  },
+});
+
+export const adminSnapshot = query({
+  args: { propertyId: v.id('properties'), startDate: v.string(), endDate: v.string() },
+  handler: async (ctx, args) => {
+    await requireRead(ctx, args.propertyId);
+    const [property, units, unitTypes, bookings, addOns] = await Promise.all([
+      ctx.db.get(args.propertyId),
+      ctx.db.query('units').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
+      ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
+      ctx.db.query('bookings').withIndex('by_property_checkIn', (q) => q.eq('propertyId', args.propertyId)).collect(),
+      ctx.db.query('addOns').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
+    ]);
+    if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
+    const unitById = new Map(units.map((row) => [String(row._id), row]));
+    const typeById = new Map(unitTypes.map((row) => [String(row._id), row]));
+    const active = bookings.filter((row) => row.status !== 'cancelled' && row.status !== 'expired');
+    const inRange = active.filter((row) => row.checkIn < args.endDate && row.checkOut > args.startDate);
+    const bookingRows = [];
+    let roomRevenueCents = 0;
+    let serviceRevenueCents = 0;
+    const sourceCounts: Record<string, number> = {};
+    const dailyRevenue: Record<string, { roomCents: number; serviceCents: number }> = {};
+    const serviceUsage = new Map(addOns.map((row) => [String(row._id), { name: row.name, count: 0, revenueCents: 0 }]));
+    for (const booking of inRange) {
+      const [guest, lines] = await Promise.all([
+        booking.guestId ? ctx.db.get(booking.guestId) : null,
+        ctx.db.query('bookingAddOns').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).collect(),
+      ]);
+      const serviceCents = lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);
+      const totalCents = booking.priceBreakdown?.totalCents ?? 0;
+      const roomCents = Math.max(0, totalCents - serviceCents);
+      if (['confirmed', 'checked_in', 'checked_out'].includes(booking.status)) {
+        roomRevenueCents += roomCents;
+        serviceRevenueCents += serviceCents;
+        const day = dailyRevenue[booking.checkIn] ?? { roomCents: 0, serviceCents: 0 };
+        day.roomCents += roomCents; day.serviceCents += serviceCents; dailyRevenue[booking.checkIn] = day;
+      }
+      for (const line of lines) {
+        const usage = serviceUsage.get(String(line.addOnId));
+        if (usage) { usage.count += line.quantity; usage.revenueCents += line.unitPriceCents * line.quantity; }
+      }
+      const source = booking.source === 'online' ? 'Website' : booking.source.replace(/^ical:/, '').replace(/^manual:/, '');
+      sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
+      bookingRows.push({
+        bookingId: booking._id,
+        confirmationCode: booking.confirmationCode,
+        guestName: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA',
+        guestEmail: guest?.email ?? '', guestPhone: guest?.phone ?? '',
+        unitId: booking.unitId, unitName: unitById.get(String(booking.unitId))?.name ?? 'Chỗ nghỉ',
+        unitTypeName: typeById.get(String(booking.unitTypeId))?.name ?? 'Chỗ nghỉ',
+        checkIn: booking.checkIn, checkOut: booking.checkOut, adults: booking.adults, children: booking.children,
+        status: booking.status, source: booking.source, totalCents, serviceCents,
+        syncConflict: booking.syncConflict ?? false, createdAt: booking.createdAt,
+      });
+    }
+    const periodNights = enumerateNights(args.startDate, args.endDate).length;
+    const activeUnits = units.filter((row) => row.status === 'active').length;
+    const occupiedNights = inRange.reduce((sum, booking) => {
+      const start = booking.checkIn < args.startDate ? args.startDate : booking.checkIn;
+      const end = booking.checkOut > args.endDate ? args.endDate : booking.checkOut;
+      return sum + enumerateNights(start, end).length;
+    }, 0);
+    return {
+      property: { name: property.name, currency: property.currency },
+      kpis: {
+        totalBookings: inRange.length,
+        pendingBookings: inRange.filter((row) => row.status === 'pending').length,
+        confirmedBookings: inRange.filter((row) => row.status === 'confirmed').length,
+        currentGuests: inRange.filter((row) => row.status === 'checked_in').reduce((sum, row) => sum + row.adults + row.children, 0),
+        roomRevenueCents, serviceRevenueCents, totalRevenueCents: roomRevenueCents + serviceRevenueCents,
+        occupancyPercent: activeUnits && periodNights ? Math.min(100, Math.round((occupiedNights / (activeUnits * periodNights)) * 100)) : 0,
+        conflictCount: inRange.filter((row) => row.syncConflict && !row.syncConflictAcknowledgedAt).length,
+      },
+      bookings: bookingRows.sort((a, b) => a.checkIn.localeCompare(b.checkIn)),
+      units: units.sort((a, b) => a.sortOrder - b.sortOrder).map((row) => ({ ...row, type: typeById.get(String(row.unitTypeId)) })),
+      dailyRevenue: Object.entries(dailyRevenue).sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, ...value, totalCents: value.roomCents + value.serviceCents })),
+      sourceCounts: Object.entries(sourceCounts).map(([source, count]) => ({ source, count })),
+      serviceUsage: [...serviceUsage.values()],
+    };
   },
 });

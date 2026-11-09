@@ -37,7 +37,7 @@ const sourceLabels = {
   other: 'Nguồn khác',
 } as const;
 
-export function SongHomestayManagementSection({ propertyId }: { propertyId: Id<'properties'> }) {
+export function SongHomestayManagementSection({ propertyId, initialTab = 'booking', showTabs = true }: { propertyId: Id<'properties'>; initialTab?: 'booking' | 'units' | 'services'; showTabs?: boolean }) {
   const catalog = useQuery((api as any).songHomestay.managementCatalog, { propertyId }) as Catalog | undefined;
   const since = useMemo(() => {
     const date = new Date();
@@ -64,7 +64,7 @@ export function SongHomestayManagementSection({ propertyId }: { propertyId: Id<'
   const createAddOn = useMutation((api as any).songHomestay.createAddOn);
   const updateAddOn = useMutation((api as any).songHomestay.updateAddOn);
 
-  const [tab, setTab] = useState<'booking' | 'units' | 'services'>('booking');
+  const [tab, setTab] = useState<'booking' | 'units' | 'services'>(initialTab);
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [working, setWorking] = useState(false);
   const [unitId, setUnitId] = useState('');
@@ -136,7 +136,8 @@ export function SongHomestayManagementSection({ propertyId }: { propertyId: Id<'
 
   return (
     <section className="card overflow-hidden border-2 border-sky-700/20 p-5" aria-label="Quản lý vận hành Sóng Homestay">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* Embedded in an admin page that already shows its own title: keep only a screen-reader heading. */}
+      {!showTabs ? <h2 className="sr-only">Booking thủ công, căn lưu trú và dịch vụ</h2> : <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Sóng Homestay</p>
           <h2 className="mt-1 text-xl font-semibold text-stone-950">Booking thủ công, căn lưu trú và dịch vụ</h2>
@@ -147,9 +148,9 @@ export function SongHomestayManagementSection({ propertyId }: { propertyId: Id<'
           <button type="button" className={tab === 'units' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('units')}><BedDouble className="h-4 w-4" /> Căn ({catalog?.units.length ?? 0})</button>
           <button type="button" className={tab === 'services' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('services')}><ConciergeBell className="h-4 w-4" /> Dịch vụ ({catalog?.addOns.length ?? 0})</button>
         </div>
-      </div>
+      </div>}
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6" aria-label="KPI 30 ngày">
+      <div className={`${showTabs ? 'mt-4 ' : ''}grid gap-2 sm:grid-cols-2 xl:grid-cols-6`} aria-label="KPI 30 ngày">
         <Kpi label="Booking 30 ngày" value={kpis?.totalBookings ?? '…'} detail={`${kpis?.directBookings ?? 0} web · ${kpis?.manualBookings ?? 0} thủ công · ${kpis?.otaBookings ?? 0} OTA`} />
         <Kpi label="Tỷ lệ booking web" value={kpis ? `${kpis.directSharePercent}%` : '…'} detail="Mục tiêu O5: 10%" />
         <Kpi label="Web kèm dịch vụ" value={kpis ? `${kpis.serviceAttachPercent}%` : '…'} detail={`${kpis?.directWithServices ?? 0} booking · O6: 20%`} />

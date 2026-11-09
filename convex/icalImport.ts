@@ -7,6 +7,63 @@ import { parseIcs } from '../shared/ical';
 import { markPropertyDirtyInline } from './channel/ari';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
+export const authorizeManualImport = mutation({
+  args: { propertyId: v.id('properties'), unitId: v.id('units') },
+  handler: async (ctx, args) => {
+    if (process.env.DEMO_MODE !== 'true') {
+      await requireMutationPropertyCapability(ctx, args.propertyId, 'booking.write', 'ical.manual_import');
+    }
+    const unit = await ctx.db.get(args.unitId);
+    if (!unit || unit.propertyId !== args.propertyId) throw new ConvexError('UNIT_NOT_FOUND');
+    return { authorized: true };
+  },
+});
+
+export const uploadManualIcs = action({
+  args: {
+    propertyId: v.id('properties'),
+    unitId: v.id('units'),
+    source: v.union(v.literal('Airbnb'), v.literal('Booking.com')),
+    icsText: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ inserted: number; updated: number; removed: number; conflicts: number; warnings: string[]; importedAt: number }> => {
+    await ctx.runMutation(api.icalImport.authorizeManualImport, { propertyId: args.propertyId, unitId: args.unitId });
+    if (args.icsText.length > 1_000_000 || !args.icsText.includes('BEGIN:VCALENDAR')) {
+      throw new ConvexError({ code: 'INVALID_ICAL', message: 'Tệp iCal không hợp lệ hoặc vượt quá 1 MB.' });
+    }
+    const parsed = parseIcs(args.icsText);
+    if (parsed.events.length === 0 && parsed.warnings.length > 0) {
+      throw new ConvexError({ code: 'INVALID_ICAL', message: parsed.warnings[0] });
+    }
+    const result = await ctx.runMutation(internal.icalImport.applyUnitImport, {
+      unitId: args.unitId,
+      label: args.source,
+      events: parsed.events,
+    });
+    const importedAt = Date.now();
+    await ctx.runMutation(internal.icalImport.recordManualImport, {
+      unitId: args.unitId,
+      source: args.source,
+      importedAt,
+      summary: `manual:${result.inserted}:${result.updated}:${result.removed}:${result.conflicts}`,
+    });
+    return { ...result, warnings: parsed.warnings, importedAt };
+  },
+});
+
+export const recordManualImport = internalMutation({
+  args: { unitId: v.id('units'), source: v.string(), importedAt: v.number(), summary: v.string() },
+  handler: async (ctx, args) => {
+    const unit = await ctx.db.get(args.unitId);
+    if (!unit) return;
+    const url = `upload:${args.source}`;
+    const other = unit.icalImports.filter((item) => item.url !== url);
+    await ctx.db.patch(unit._id, {
+      icalImports: [...other, { url, label: args.source, lastSyncedAt: args.importedAt, lastStatus: args.summary }],
+    });
+  },
+});
+
 /**
  * iCal calendar IMPORT (M1, builder E) — pulls external calendars (a direct
  * Airbnb listing, a legacy-PMS bridge) into unitNights so external bookings
@@ -647,7 +704,7 @@ export const dashboardForProperty = query({
       .query('bookings')
       .withIndex('by_property_checkIn', (q) => q.eq('propertyId', property._id))
       .collect();
-    const activeStatuses = new Set(['hold', 'confirmed', 'checked_in', 'external']);
+    const activeStatuses = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external']);
     const activeBookings = allBookings.filter((b) => activeStatuses.has(b.status));
 
     const guestsById = new Map<Id<'guests'>, Doc<'guests'>>();

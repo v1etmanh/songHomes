@@ -181,7 +181,7 @@ export const moveBooking = mutation({
     const nights = assertDates(args.checkIn, args.checkOut);
     const [booking, targetUnit] = await Promise.all([ctx.db.get(args.bookingId), ctx.db.get(args.targetUnitId)]);
     if (!booking || booking.propertyId !== args.propertyId || !targetUnit || targetUnit.propertyId !== args.propertyId) throw new ConvexError('PROPERTY_RECORD_MISMATCH');
-    if (!['hold', 'confirmed', 'checked_in', 'blocked'].includes(booking.status)) throw new ConvexError('BOOKING_NOT_MOVABLE');
+    if (!['hold', 'pending', 'confirmed', 'checked_in', 'blocked'].includes(booking.status)) throw new ConvexError('BOOKING_NOT_MOVABLE');
     if (targetUnit.unitTypeId !== booking.unitTypeId) throw new ConvexError('UNIT_TYPE_MISMATCH');
     const version = booking.version ?? 0;
     if (version !== args.expectedVersion) throw new ConvexError(`VERSION_CONFLICT:${version}`);

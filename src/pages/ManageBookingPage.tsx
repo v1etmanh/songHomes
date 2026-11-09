@@ -64,7 +64,7 @@ export function ManageBookingPage() {
   if (booking === undefined) return <Spinner label="Loading booking…" />;
   if (booking === null) return <NotFoundPage />;
 
-  const cancellable = booking.status === 'confirmed' || booking.status === 'hold';
+  const cancellable = booking.status === 'confirmed' || booking.status === 'pending' || booking.status === 'hold';
   const cancelled = booking.status === 'cancelled';
 
   async function handleCancel() {

@@ -49,6 +49,7 @@ export const unitAttributesSchema = v.object({
 
 export const bookingStatus = v.union(
   v.literal('hold'), // TTL hold, pre-payment
+  v.literal('pending'), // submitted direct-booking request awaiting staff confirmation
   v.literal('confirmed'), // paid (deposit or full)
   v.literal('checked_in'),
   v.literal('checked_out'),
@@ -214,6 +215,20 @@ export default defineSchema({
     photoUrls: v.array(v.string()),
     maxOccupancy: v.number(),
     amenities: v.array(v.string()),
+    address: v.optional(v.string()),
+    accommodationType: v.optional(v.string()),
+    bedrooms: v.optional(v.number()),
+    bathrooms: v.optional(v.number()),
+    areaSqm: v.optional(v.number()),
+    capacityKnown: v.optional(v.boolean()),
+    highlights: v.optional(v.array(v.string())),
+    policies: v.optional(v.object({
+      checkIn: v.optional(v.string()),
+      checkOut: v.optional(v.string()),
+      children: v.optional(v.string()),
+      pets: v.optional(v.string()),
+      cancellation: v.optional(v.string()),
+    })),
     comingSoon: v.boolean(),
     sortOrder: v.number(),
     // Channex Room Type UUID. Channex tracks availability as a COUNT per room
@@ -1180,13 +1195,17 @@ export default defineSchema({
     documentNumber: v.string(),
     nationality: v.string(),
     dateOfBirth: v.optional(v.string()),
+    gender: v.optional(v.string()),
+    documentIssuedDate: v.optional(v.string()),
     phone: v.optional(v.string()),
     permanentAddress: v.optional(v.string()),
     registrationType: v.union(v.literal('tam_tru'), v.literal('tam_vang')),
     checkInDate: v.string(),
     checkOutDate: v.string(),
     reason: v.optional(v.string()),
-    status: v.union(v.literal('declared'), v.literal('verified')),
+    status: v.union(v.literal('declared'), v.literal('verified'), v.literal('completed')),
+    absenceStatus: v.optional(v.union(v.literal('away'), v.literal('returned'))),
+    notes: v.optional(v.string()),
     submittedBy: v.union(v.literal('guest'), v.literal('staff')),
     consentAt: v.optional(v.number()),
     retentionUntil: v.optional(v.number()),
@@ -1195,4 +1214,17 @@ export default defineSchema({
   })
     .index('by_booking', ['bookingId'])
     .index('by_property_createdAt', ['propertyId', 'createdAt']),
+
+  contactSubmissions: defineTable({
+    propertyId: v.id('properties'),
+    name: v.string(),
+    phone: v.string(),
+    email: v.string(),
+    message: v.string(),
+    status: v.union(v.literal('new'), v.literal('in_progress'), v.literal('resolved')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_property_createdAt', ['propertyId', 'createdAt'])
+    .index('by_property_status', ['propertyId', 'status']),
 });

@@ -24,6 +24,10 @@ npm run dev
 
 Frontend dùng `http://localhost:5173`; Convex local dùng địa chỉ trong `.env.local`. Sóng Homestay cho phép xác nhận booking theo phương thức thanh toán tại homestay nên không cần cổng thanh toán thật.
 
+Inventory chuẩn gồm 5 cơ sở: Garden House, Sea View Apartment, Coastal Apartment, Pool Villa và Rooftop House. Booking trực tiếp được ghi nhận ở trạng thái **Chờ xác nhận** và khóa lịch cho đến khi nhân viên xác nhận hoặc hủy.
+
+Nếu deployment local vẫn chứa bộ dữ liệu Sóng 8 căn cũ, đặt `ALLOW_SONG_RESET=true` trong Convex rồi chạy `npm run song:reset`. Lệnh chỉ reset property có slug `song-homestay`.
+
 ## Cổng kiểm soát chất lượng
 
 ```powershell

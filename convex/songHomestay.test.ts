@@ -105,7 +105,7 @@ describe('Sóng Homestay admin management', () => {
     expect(catalog.addOns.find((row: any) => row.addOnId === createdAddOn.addOnId)).toMatchObject({ name: 'Giặt ủi trong ngày', priceCents: 90_000_00, active: false });
   });
 
-  it('lets a web guest confirm without a real payment gateway when paying at the homestay', async () => {
+  it('submits a web booking as pending without a payment and keeps its nights blocked', async () => {
     const t = convexTest(schema, modules);
     const fx = await seedSong(t);
     const unit = (fx.units as any[])[1];
@@ -133,10 +133,12 @@ describe('Sóng Homestay admin management', () => {
       booking: await ctx.db.get(hold.bookingId),
       payments: await ctx.db.query('payments').withIndex('by_booking', (q) => q.eq('bookingId', hold.bookingId)).collect(),
       receipts: await ctx.db.query('consensusReceipts').withIndex('by_booking', (q) => q.eq('bookingId', hold.bookingId)).collect(),
+      nights: await ctx.db.query('unitNights').withIndex('by_booking', (q) => q.eq('bookingId', hold.bookingId)).collect(),
     }));
-    expect(state.booking?.status).toBe('confirmed');
-    expect(state.booking?.notes.at(-1)?.text).toContain('thanh toán tại Sóng Homestay');
+    expect(state.booking?.status).toBe('pending');
+    expect(state.booking?.notes.at(-1)?.text).toContain('chờ nhân viên xác nhận');
     expect(state.payments).toEqual([]);
     expect(state.receipts).toEqual([]);
+    expect(state.nights).toHaveLength(2);
   });
 });

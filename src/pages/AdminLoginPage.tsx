@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useQuery } from 'convex/react';
-import { LogIn, ShieldCheck, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, LogIn, ShieldCheck, UserPlus } from 'lucide-react';
 
 import { api } from '../../convex/_generated/api';
 import { ErrorMessage, extractErrorMessage } from '../components/ErrorMessage';
@@ -34,6 +34,7 @@ export function AdminLoginPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,10 +60,10 @@ export function AdminLoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-6">
+    <div className="mx-auto max-w-md space-y-6 py-8">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-6 w-6 text-emerald-700" aria-hidden="true" />
-        <h1 className="font-display text-2xl font-semibold text-stone-900">Staff sign-in</h1>
+        <div><p className="text-xs font-bold uppercase tracking-[.18em] text-cyan-700">Sóng Homestay</p><h1 className="font-display text-2xl font-semibold text-stone-900">Đăng nhập quản trị</h1></div>
       </div>
 
       <div className="card p-6">
@@ -79,7 +80,7 @@ export function AdminLoginPage() {
 
         {accountCreationDisabled ? (
           <p className="mb-5 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-600">
-            Existing staff may sign in. Account creation is disabled on this deployment.
+            Chỉ tài khoản nhân viên đã được cấp quyền mới có thể truy cập hệ thống.
           </p>
         ) : (
           <div className="mb-5 flex rounded-lg bg-stone-100 p-1 text-sm font-medium">
@@ -123,7 +124,7 @@ export function AdminLoginPage() {
 
           <div>
             <label className="field-label" htmlFor="staff-email">
-              Email
+              Email hoặc tên đăng nhập
             </label>
             <input
               id="staff-email"
@@ -138,17 +139,17 @@ export function AdminLoginPage() {
 
           <div>
             <label className="field-label" htmlFor="staff-password">
-              Password
+              Mật khẩu
             </label>
-            <input
+            <div className="relative"><input
               id="staff-password"
               className="field-input"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               required
               autoComplete={isSignUp ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-            />
+            /><button type="button" aria-label={showPassword?'Ẩn mật khẩu':'Hiện mật khẩu'} className="absolute right-3 top-2.5 text-stone-500" onClick={()=>setShowPassword((value)=>!value)}>{showPassword?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}</button></div>
           </div>
 
           {error ? <ErrorMessage message={error} /> : null}
@@ -162,7 +163,7 @@ export function AdminLoginPage() {
             ) : (
               <>
                 <LogIn className="h-4 w-4" aria-hidden="true" />
-                {submitting ? 'Signing in…' : 'Sign in'}
+                {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
               </>
             )}
           </button>

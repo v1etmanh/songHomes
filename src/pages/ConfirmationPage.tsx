@@ -34,6 +34,31 @@ export function ConfirmationPage() {
     return <Spinner label="Finalizing your payment… this can take a few seconds." />;
   }
 
+  if (booking.status === 'pending') {
+    return (
+      <div className="mx-auto max-w-lg">
+        <div className="card p-8 text-center">
+          <PartyPopper className="mx-auto h-10 w-10 text-cyan-700" aria-hidden="true" />
+          <p className="text-sm font-bold uppercase tracking-[.18em] text-cyan-700">Đã tiếp nhận yêu cầu</p>
+          <h1 className="mt-2 text-2xl font-semibold text-stone-900">Đặt phòng đang chờ xác nhận</h1>
+          <p className="mt-2 text-stone-500">Sóng Homestay đã khóa lịch và sẽ liên hệ với bạn để xác nhận thông tin.</p>
+          <p className="mt-4 rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900">Mã đặt phòng <span className="font-mono font-bold">{booking.confirmationCode}</span></p>
+          <dl className="mt-6 space-y-2 text-left text-sm text-stone-600">
+            <div className="flex justify-between gap-4"><dt>Khách đặt</dt><dd className="font-medium text-stone-900">{booking.guestName}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Chỗ nghỉ</dt><dd className="text-right font-medium text-stone-900">{booking.unitTypeName}</dd></div>
+            <div className="flex justify-between"><dt>Nhận phòng</dt><dd>{formatDisplayDate(booking.checkIn)}</dd></div>
+            <div className="flex justify-between"><dt>Trả phòng</dt><dd>{formatDisplayDate(booking.checkOut)}</dd></div>
+            <div className="flex justify-between"><dt>Số khách</dt><dd>{booking.adults} người lớn{booking.children ? `, ${booking.children} trẻ em` : ''}</dd></div>
+            <div className="flex justify-between"><dt>Số đêm</dt><dd>{booking.nights}</dd></div>
+            <div className="flex justify-between"><dt>Trạng thái</dt><dd className="font-semibold text-amber-700">Chờ xác nhận</dd></div>
+          </dl>
+          {booking.priceBreakdown ? <div className="mt-6 border-t border-stone-200 pt-6 text-left"><PriceBreakdownView price={booking.priceBreakdown} nights={booking.nights} currency={booking.currency} taxLabel={booking.taxLabel} /></div> : null}
+          <Link to={`/manage/${booking.confirmationCode}`} className="btn-secondary mt-6 inline-flex">Tra cứu đặt phòng</Link>
+        </div>
+      </div>
+    );
+  }
+
   if (booking.status === 'payment_conflict') {
     const property = propertyConfigs?.[0];
     return (

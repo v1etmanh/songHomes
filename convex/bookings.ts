@@ -27,7 +27,7 @@ export const HOLD_TTL_MS = 35 * 60 * 1000;
 /** Cap concurrent active holds per guest email (hold-spam guard). */
 const MAX_ACTIVE_HOLDS_PER_EMAIL = 3;
 
-const ACTIVE_KINDS = ['hold', 'confirmed', 'checked_in', 'external', 'blocked'] as const;
+const ACTIVE_KINDS = ['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked'] as const;
 
 async function dispositionProviderRefund(
   ctx: MutationCtx,
@@ -124,6 +124,12 @@ export const createHold = mutation({
     const unitType = await ctx.db.get(unit.unitTypeId);
     if (!unitType) {
       throw new ConvexError({ code: 'UNIT_UNAVAILABLE', message: 'This unit is not bookable.' });
+    }
+    if (unitType.capacityKnown === false) {
+      throw new ConvexError({
+        code: 'CAPACITY_UNCONFIRMED',
+        message: 'Vui lòng liên hệ Sóng Homestay để xác nhận sức chứa của chỗ nghỉ này.',
+      });
     }
     if (!Number.isInteger(args.adults) || args.adults < 1) {
       throw new ConvexError({ code: 'INVALID_OCCUPANCY', message: 'At least one adult is required.' });
@@ -615,11 +621,18 @@ export const confirmPayAtProperty = mutation({
     }
     const now = Date.now();
     await applyPromoRedemption(ctx, booking._id);
+    const submittedStatus = property.slug === 'song-homestay' ? 'pending' : 'confirmed';
     await ctx.db.patch(booking._id, {
-      status: 'confirmed',
+      status: submittedStatus,
       holdExpiresAt: undefined,
-      statusHistory: [...booking.statusHistory, { status: 'confirmed', ts: now }],
-      notes: [...booking.notes, { ts: now, text: 'Khách chọn thanh toán tại Sóng Homestay.', by: 'guest' }],
+      statusHistory: [...booking.statusHistory, { status: submittedStatus, ts: now }],
+      notes: [...booking.notes, {
+        ts: now,
+        text: property.slug === 'song-homestay'
+          ? 'Khách đã gửi yêu cầu đặt phòng và đang chờ nhân viên xác nhận.'
+          : 'Khách chọn thanh toán tại chỗ.',
+        by: 'guest',
+      }],
       updatedAt: now,
     });
     await ctx.scheduler.runAfter(0, internal.email.sendBookingEmail, {
@@ -648,7 +661,7 @@ export const cancelByGuest = mutation({
     if (!guest || guest.normalizedEmail !== args.email.trim().toLowerCase()) {
       throw new ConvexError({ code: 'NOT_FOUND', message: 'Booking not found.' });
     }
-    if (booking.status !== 'confirmed' && booking.status !== 'hold') {
+    if (booking.status !== 'confirmed' && booking.status !== 'pending' && booking.status !== 'hold') {
       throw new ConvexError({ code: 'NOT_CANCELLABLE', message: `Booking is ${booking.status}.` });
     }
 
@@ -738,8 +751,11 @@ async function publicBookingView(ctx: QueryCtx, booking: Doc<'bookings'>) {
     .query('bookingAddOns')
     .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
     .collect();
+  const guest = booking.guestId ? await ctx.db.get(booking.guestId) : null;
   return {
     propertyId: booking.propertyId,
+    propertySlug: property?.slug ?? '',
+    propertyName: property?.name ?? '',
     currency: property?.currency ?? 'CAD',
     payAtPropertyEnabled: property?.allowPayAtProperty ?? false,
     taxLabel: property?.taxLabel,
@@ -750,6 +766,7 @@ async function publicBookingView(ctx: QueryCtx, booking: Doc<'bookings'>) {
     nights: booking.nights,
     adults: booking.adults,
     children: booking.children,
+    guestName: guest?.name ?? '',
     holdExpiresAt: booking.holdExpiresAt,
     priceBreakdown: booking.priceBreakdown,
     promoCode: booking.promoCodeSnapshot,

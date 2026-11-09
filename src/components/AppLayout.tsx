@@ -7,6 +7,8 @@ import { PUBLIC_SHOWCASE } from '../lib/publicShowcase';
 export function AppLayout() {
   const location = useLocation();
   const isSongLanding = location.pathname === '/p/song-homestay';
+  const isSongPublic = location.pathname.startsWith('/p/song-homestay');
+  const isAdmin = location.pathname.startsWith('/admin');
 
   useEffect(() => {
     if (!isSongLanding || !location.hash) return;
@@ -14,6 +16,16 @@ export function AppLayout() {
   }, [isSongLanding, location.hash]);
 
   if (!PUBLIC_SHOWCASE.enabled) {
+    if (isAdmin) {
+      return (
+        <div className="min-h-screen bg-[#f1f7ff]">
+          <a href="#main-content" className="skip-link">Skip to main content</a>
+          <main id="main-content" tabIndex={-1} className="min-h-screen w-full">
+            <Outlet />
+          </main>
+        </div>
+      );
+    }
     return (
       <div className="flex min-h-screen flex-col bg-[#f4fafc]">
         <a href="#main-content" className="skip-link">Skip to main content</a>
@@ -27,16 +39,15 @@ export function AppLayout() {
             </Link>
             <nav aria-label="Điều hướng chính" className="hidden items-center gap-1 text-sm font-semibold text-slate-600 md:flex">
               <Link to="/p/song-homestay" className={`rounded-full px-4 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795] ${isSongLanding && !location.hash ? 'bg-[#dff6fb] text-[#087795]' : ''}`}>Trang chủ</Link>
-              <Link to="/p/song-homestay#rooms" className="rounded-full px-4 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Danh sách phòng</Link>
-              <Link to="/p/song-homestay#services" className="rounded-full px-4 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Dịch vụ</Link>
-              <Link to="/p/song-homestay#about" className="rounded-full px-4 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Liên hệ</Link>
+              <Link to="/p/song-homestay/stays" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Chỗ nghỉ</Link>
+              <Link to="/p/song-homestay/experiences" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Trải nghiệm</Link>
+              <Link to="/p/song-homestay/about" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Giới thiệu</Link>
+              <Link to="/p/song-homestay/contact" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Liên hệ</Link>
             </nav>
-            {PUBLIC_SHOWCASE.allowStaffRoutes ? (
-              <Link to="/admin" className="rounded-full border border-[#0b7e9f]/25 px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#0b7e9f] hover:bg-[#087795] hover:text-white">Quản trị</Link>
-            ) : null}
+            <div className="flex items-center gap-2"><Link to="/p/song-homestay/booking" className="rounded-full bg-[#087795] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#065f78]">Đặt phòng</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#0b7e9f]/25 px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#0b7e9f] hover:bg-[#087795] hover:text-white sm:inline">Quản trị</Link> : null}</div>
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className={isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>
+        <main id="main-content" tabIndex={-1} className={isSongPublic ? (isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8') : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>
           <Outlet />
         </main>
         <footer className="bg-[#05344d] px-5 py-14 text-sm text-white/70 sm:px-8">
@@ -51,9 +62,9 @@ export function AppLayout() {
             <div>
               <h2 className="font-sans font-bold text-white">Liên hệ</h2>
               <div className="mt-4 space-y-3">
-                <p className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> Mỹ Khê, Sơn Trà, Đà Nẵng</p>
-                <p className="flex gap-2"><Phone className="h-4 w-4 shrink-0 text-cyan-300" /> 0905 688 999</p>
-                <p className="flex gap-2"><Mail className="h-4 w-4 shrink-0 text-cyan-300" /> booking@songhomestay.vn</p>
+                <p className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> Đà Nẵng, Việt Nam</p>
+                <p className="flex gap-2"><Phone className="h-4 w-4 shrink-0 text-cyan-300" /> 0911.388.703</p>
+                <p className="flex gap-2"><Mail className="h-4 w-4 shrink-0 text-cyan-300" /> Songhomestay@gmail.com</p>
               </div>
             </div>
             <div>

@@ -98,7 +98,7 @@ export async function buildFrontDeskQueues(ctx: QueryCtx, args: { propertyId: Id
       (row.checkOut === args.businessDate && row.balanceCents > 0),
     );
     return {
-      arriving: rows.filter((row) => row.checkIn === args.businessDate && ['hold', 'confirmed'].includes(row.status)),
+      arriving: rows.filter((row) => row.checkIn === args.businessDate && ['hold', 'pending', 'confirmed'].includes(row.status)),
       departing: rows.filter((row) => row.checkOut === args.businessDate && ['confirmed', 'checked_in'].includes(row.status)),
       stayingOver: rows.filter((row) => row.checkIn < args.businessDate && row.checkOut > args.businessDate && ['confirmed', 'checked_in'].includes(row.status)),
       checkedIn: rows.filter((row) => row.status === 'checked_in'),

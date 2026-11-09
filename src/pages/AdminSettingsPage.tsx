@@ -12,6 +12,7 @@ import { ErrorMessage, extractErrorMessage } from '../components/ErrorMessage';
 import { ChannelsSection } from '../components/ChannelsSection';
 import { SignInActivitySection } from '../components/SignInActivitySection';
 import { useStaffGate } from '../lib/useStaff';
+import { useAdminProperty } from '../components/AdminShell';
 
 type PropertyConfig = {
   propertyId: Id<'properties'>;
@@ -64,6 +65,8 @@ function toFormState(property: PropertyConfig): PropertyFormState {
  */
 export function AdminSettingsPage() {
   const gate = useStaffGate();
+  const { property: activeProperty } = useAdminProperty();
+  const vi = activeProperty.slug === 'song-homestay';
   const { signOut } = useAuthActions();
   const properties = useQuery(api.staff.forSettings, gate.status === 'staff' ? {} : 'skip');
 
@@ -73,13 +76,14 @@ export function AdminSettingsPage() {
     return (
       <div className="mx-auto max-w-md space-y-4 text-center">
         <ShieldAlert className="mx-auto h-8 w-8 text-amber-600" aria-hidden="true" />
-        <h1 className="font-display text-xl font-semibold text-stone-900">Awaiting staff access</h1>
+        <h1 className="font-display text-xl font-semibold text-stone-900">{vi ? 'Đang chờ cấp quyền' : 'Awaiting staff access'}</h1>
         <p className="text-sm text-stone-600">
-          You're signed in but no owner has granted you staff access yet. Ask an owner to add you here once
-          you can reach it, or contact your administrator.
+          {vi
+            ? 'Bạn đã đăng nhập nhưng chưa được chủ sở hữu cấp quyền nhân viên. Vui lòng liên hệ quản trị viên.'
+            : "You're signed in but no owner has granted you staff access yet. Ask an owner to add you here once you can reach it, or contact your administrator."}
         </p>
         <button type="button" className="btn-secondary" onClick={() => void signOut()}>
-          Sign out
+          {vi ? 'Đăng xuất' : 'Sign out'}
         </button>
       </div>
     );
@@ -90,36 +94,36 @@ export function AdminSettingsPage() {
       <div className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 font-display text-2xl font-semibold text-stone-900">
           <Settings className="h-6 w-6 text-emerald-700" aria-hidden="true" />
-          Settings
+          {vi ? 'Cài đặt' : 'Settings'}
         </h1>
-        <Link to="/admin" className="text-sm text-stone-500 hover:text-stone-800">
-          ← Booking tape
+        <Link to={vi ? '/admin/dashboard' : '/admin'} className="text-sm text-stone-500 hover:text-stone-800">
+          {vi ? '← Dashboard' : '← Booking tape'}
         </Link>
       </div>
 
       <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
         <span className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Signed in as {gate.name} ({gate.role})
+          {vi ? 'Đăng nhập với tên' : 'Signed in as'} {gate.name} ({gate.role})
         </span>
         <button
           type="button"
           className="text-xs font-medium text-emerald-700 underline hover:text-emerald-900"
           onClick={() => void signOut()}
         >
-          Sign out
+          {vi ? 'Đăng xuất' : 'Sign out'}
         </button>
       </div>
 
       {properties === undefined ? (
-        <Spinner label="Loading configuration…" />
+        <Spinner label={vi ? 'Đang tải cấu hình…' : 'Loading configuration…'} />
       ) : properties.length === 0 ? (
         <div className="card p-8 text-center text-stone-600">
           No properties configured yet. Run <code className="rounded bg-stone-100 px-1">npm run seed</code>{' '}
           or add one via the Convex dashboard.
         </div>
       ) : (
-        properties.map((property) => <PropertyEditor key={property.propertyId} property={property} />)
+        properties.map((property) => <PropertyEditor key={property.propertyId} property={property} vi={vi} />)
       )}
 
       {/* Any staff can VIEW channel status (getChannelConfig is staff-gated,
@@ -135,7 +139,7 @@ export function AdminSettingsPage() {
 
       {gate.role === 'owner' ? <StaffSection /> : null}
 
-      <section className="card p-6">
+      {vi ? null : <section className="card p-6">
         <h2 className="font-display text-lg font-semibold text-stone-900">About OpenStays</h2>
         <p className="mt-2 text-sm text-stone-600">
           OpenStays is an open-source booking engine and PMS built by{' '}
@@ -161,12 +165,13 @@ export function AdminSettingsPage() {
             Docs <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         </p>
-      </section>
+      </section>}
     </div>
   );
 }
 
-function PropertyEditor({ property }: { property: PropertyConfig }) {
+function PropertyEditor({ property, vi }: { property: PropertyConfig; vi: boolean }) {
+  const t = (en: string, vn: string) => (vi ? vn : en);
   const updateProperty = useMutation(api.staff.updateProperty);
   const [form, setForm] = useState<PropertyFormState>(() => toFormState(property));
   const [saving, setSaving] = useState(false);
@@ -217,14 +222,14 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-display text-lg font-semibold text-stone-900">{property.name}</h2>
         <span className={`badge ${property.active ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-600'}`}>
-          {property.active ? 'Active' : 'Inactive'}
+          {property.active ? t('Active', 'Đang hoạt động') : t('Inactive', 'Tạm dừng')}
         </span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="field-label" htmlFor={`name-${property.propertyId}`}>
-            Name
+            {t('Name', 'Tên cơ sở')}
           </label>
           <input
             id={`name-${property.propertyId}`}
@@ -236,7 +241,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`currency-${property.propertyId}`}>
-            Currency
+            {t('Currency', 'Tiền tệ')}
           </label>
           <select
             id={`currency-${property.propertyId}`}
@@ -253,7 +258,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`tax-rate-${property.propertyId}`}>
-            Tax rate (basis points, 500 = 5%)
+            {t('Tax rate (basis points, 500 = 5%)', 'Thuế suất (basis points, 800 = 8%)')}
           </label>
           <input
             id={`tax-rate-${property.propertyId}`}
@@ -268,7 +273,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`tax-label-${property.propertyId}`}>
-            Tax label
+            {t('Tax label', 'Nhãn thuế')}
           </label>
           <input
             id={`tax-label-${property.propertyId}`}
@@ -281,7 +286,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`gst-number-${property.propertyId}`}>
-            Tax registration number
+            {t('Tax registration number', 'Mã số thuế')}
           </label>
           <input
             id={`gst-number-${property.propertyId}`}
@@ -293,13 +298,13 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`timezone-${property.propertyId}`}>
-            Timezone
+            {t('Timezone', 'Múi giờ')}
           </label>
           <input id={`timezone-${property.propertyId}`} className="field-input bg-stone-50" type="text" value={property.timezone} disabled />
         </div>
         <div>
           <label className="field-label" htmlFor={`check-in-${property.propertyId}`}>
-            Check-in time
+            {t('Check-in time', 'Giờ nhận phòng')}
           </label>
           <input
             id={`check-in-${property.propertyId}`}
@@ -311,7 +316,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`check-out-${property.propertyId}`}>
-            Check-out time
+            {t('Check-out time', 'Giờ trả phòng')}
           </label>
           <input
             id={`check-out-${property.propertyId}`}
@@ -335,7 +340,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div>
           <label className="field-label" htmlFor={`phone-${property.propertyId}`}>
-            Phone
+            {t('Phone', 'Số điện thoại')}
           </label>
           <input
             id={`phone-${property.propertyId}`}
@@ -347,7 +352,7 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
         </div>
         <div className="sm:col-span-2">
           <label className="field-label" htmlFor={`address-${property.propertyId}`}>
-            Address
+            {t('Address', 'Địa chỉ')}
           </label>
           <input
             id={`address-${property.propertyId}`}
@@ -357,17 +362,17 @@ function PropertyEditor({ property }: { property: PropertyConfig }) {
             onChange={(e) => set('address', e.target.value)}
           />
         </div>
-        <div className="sm:col-span-2 text-xs text-stone-400">Public page: /p/{property.slug}</div>
+        <div className="sm:col-span-2 text-xs text-stone-400">{t('Public page', 'Trang công khai')}: /p/{property.slug}</div>
       </div>
 
       <div className="mt-5 flex items-center gap-3">
         <button type="button" className="btn-primary" disabled={saving} onClick={() => void handleSave()}>
-          {saving ? 'Saving…' : 'Save changes'}
+          {saving ? t('Saving…', 'Đang lưu…') : t('Save changes', 'Lưu thay đổi')}
         </button>
         {saved ? (
           <span className="flex items-center gap-1.5 text-sm text-emerald-700">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            Saved
+            {t('Saved', 'Đã lưu')}
           </span>
         ) : null}
       </div>

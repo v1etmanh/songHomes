@@ -93,7 +93,8 @@ export function CheckoutPage() {
 
   const msRemaining = (booking.holdExpiresAt ?? now) - now;
   const expired = msRemaining <= 0;
-  const property = propertyConfigs?.[0];
+  const property = propertyConfigs?.find((candidate) => candidate.propertyId === booking.propertyId);
+  const isSong = property?.slug === 'song-homestay';
   const demoMode = providerInfo?.demoMode ?? false;
   const simulatedEnabled = providerInfo?.simulatedEnabled ?? demoMode;
   const activeBookingId = bookingId;
@@ -225,29 +226,29 @@ export function CheckoutPage() {
   return (
     <div className="mx-auto max-w-lg">
       <div className="card p-8">
-        <h1 className="text-2xl font-semibold text-stone-900">Complete your booking</h1>
+        <h1 className="text-2xl font-semibold text-stone-900">{isSong ? 'Kiểm tra và gửi yêu cầu đặt phòng' : 'Complete your booking'}</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
 
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-amber-800">
           <Clock className="h-4 w-4" aria-hidden="true" />
           {expired ? (
-            <span className="text-sm font-medium">Your hold has expired. Please start over.</span>
+            <span className="text-sm font-medium">{isSong ? 'Thời gian giữ lịch đã hết. Vui lòng chọn lại.' : 'Your hold has expired. Please start over.'}</span>
           ) : (
-            <span className="text-sm font-medium">Dates held for {formatCountdown(msRemaining)}</span>
+            <span className="text-sm font-medium">{isSong ? `Lịch đang được giữ trong ${formatCountdown(msRemaining)}` : `Dates held for ${formatCountdown(msRemaining)}`}</span>
           )}
         </div>
 
         <dl className="mt-6 space-y-1 text-sm text-stone-600">
           <div className="flex justify-between">
-            <dt>Stay</dt>
+            <dt>{isSong ? 'Chỗ nghỉ' : 'Stay'}</dt>
             <dd className="font-medium text-stone-900">{booking.unitTypeName}</dd>
           </div>
           <div className="flex justify-between">
-            <dt>Check-in</dt>
+            <dt>{isSong ? 'Nhận phòng' : 'Check-in'}</dt>
             <dd>{formatDisplayDate(booking.checkIn)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt>Check-out</dt>
+            <dt>{isSong ? 'Trả phòng' : 'Check-out'}</dt>
             <dd>{formatDisplayDate(booking.checkOut)}</dd>
           </div>
         </dl>
@@ -281,7 +282,7 @@ export function CheckoutPage() {
           </div>
         ) : null}
 
-        {PUBLIC_SHOWCASE.enabled && (
+        {!isSong && PUBLIC_SHOWCASE.enabled && (
           (providerInfo?.providers.includes('zaprite') && PUBLIC_SHOWCASE.allowLiveZaprite)
           || (wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength)
         ) ? (
@@ -307,9 +308,9 @@ export function CheckoutPage() {
         {booking.payAtPropertyEnabled ? (
           <>
             <button type="button" className="btn-primary mt-6 w-full" disabled={expired || paying} onClick={() => void handlePayAtProperty()}>
-              {payingProvider === 'pay_at_property' ? 'Đang xác nhận…' : 'Xác nhận đặt phòng — thanh toán tại homestay'}
+              {payingProvider === 'pay_at_property' ? 'Đang gửi yêu cầu…' : isSong ? 'Gửi yêu cầu đặt phòng' : 'Xác nhận đặt phòng — thanh toán tại chỗ'}
             </button>
-            <p className="mt-2 text-center text-xs text-stone-500">Không thanh toán trực tuyến. Sóng Homestay sẽ liên hệ xác nhận tiền cọc hoặc thanh toán khi nhận phòng.</p>
+            <p className="mt-2 text-center text-xs text-stone-500">Không thanh toán trực tuyến. Yêu cầu sẽ khóa lịch và ở trạng thái Chờ xác nhận cho đến khi nhân viên Sóng Homestay xử lý.</p>
           </>
         ) : demoMode ? (
           <>
@@ -373,7 +374,7 @@ export function CheckoutPage() {
           </>
         )}
 
-        {!demoMode && simulatedEnabled && PUBLIC_SHOWCASE.allowSimulated ? (
+        {!isSong && !demoMode && simulatedEnabled && PUBLIC_SHOWCASE.allowSimulated ? (
           <>
             <button
               type="button"
@@ -392,7 +393,7 @@ export function CheckoutPage() {
           </>
         ) : null}
 
-        {wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength && (
+        {!isSong && wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength && (
           <button
             type="button"
             onClick={() => void handleWavelengthPay()}
@@ -412,7 +413,7 @@ export function CheckoutPage() {
               : 'Pay 1,000 signet sats with Wavelength'}
           </button>
         )}
-        {PUBLIC_SHOWCASE.enabled
+        {!isSong && PUBLIC_SHOWCASE.enabled
           && PUBLIC_SHOWCASE.allowLiveWavelength
           && wavelengthInfo !== undefined
           && !wavelengthInfo.available ? (
@@ -422,7 +423,7 @@ export function CheckoutPage() {
             remain independent.
           </p>
         ) : null}
-        {wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength && (
+        {!isSong && wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength && (
           <p className="mt-2 text-center text-xs text-stone-500">
             Signet test sats · fixed hackathon quote · self-custodial
           </p>

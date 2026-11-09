@@ -72,6 +72,8 @@ export const registerForGuest = mutation({
     documentNumber: v.string(),
     nationality: v.optional(v.string()),
     dateOfBirth: v.optional(v.string()),
+    gender: v.optional(v.string()),
+    documentIssuedDate: v.optional(v.string()),
     phone: v.optional(v.string()),
     permanentAddress: v.optional(v.string()),
     registrationType: v.union(v.literal('tam_tru'), v.literal('tam_vang')),
@@ -116,6 +118,8 @@ export const registerForGuest = mutation({
       documentNumber,
       nationality: sanitizeText(args.nationality, 80) ?? 'Việt Nam',
       dateOfBirth: sanitizeText(args.dateOfBirth, 20),
+      gender: sanitizeText(args.gender, 40),
+      documentIssuedDate: sanitizeText(args.documentIssuedDate, 20),
       phone: sanitizeText(args.phone, 40),
       permanentAddress: sanitizeText(args.permanentAddress, 300),
       registrationType: args.registrationType,
@@ -123,6 +127,7 @@ export const registerForGuest = mutation({
       checkOutDate: args.checkOutDate,
       reason: sanitizeText(args.reason, 400),
       status: 'declared',
+      absenceStatus: args.registrationType === 'tam_vang' ? 'away' : undefined,
       submittedBy: 'guest',
       consentAt: now,
       retentionUntil: now + 180 * 24 * 60 * 60 * 1000,
@@ -215,7 +220,7 @@ export const listForProperty = query({
 export const verifyRegistration = mutation({
   args: {
     registrationId: v.id('residenceRegistrations'),
-    status: v.union(v.literal('declared'), v.literal('verified')),
+    status: v.union(v.literal('declared'), v.literal('verified'), v.literal('completed')),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.registrationId);
@@ -235,6 +240,28 @@ export const verifyRegistration = mutation({
       updatedAt: Date.now(),
     });
     return { updated: true, status: args.status };
+  },
+});
+
+export const updateAbsenceStatus = mutation({
+  args: {
+    registrationId: v.id('residenceRegistrations'),
+    absenceStatus: v.union(v.literal('away'), v.literal('returned')),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.registrationId);
+    if (!row || row.registrationType !== 'tam_vang') throw new ConvexError('ABSENCE_NOT_FOUND');
+    if (process.env.DEMO_MODE !== 'true') {
+      await requireMutationPropertyCapability(ctx, row.propertyId, 'booking.write', 'residence.absence.update');
+    }
+    await ctx.db.patch(row._id, {
+      absenceStatus: args.absenceStatus,
+      notes: sanitizeText(args.notes, 400),
+      status: args.absenceStatus === 'returned' ? 'completed' : row.status,
+      updatedAt: Date.now(),
+    });
+    return { updated: true };
   },
 });
 
