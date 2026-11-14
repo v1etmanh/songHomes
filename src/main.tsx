@@ -19,6 +19,8 @@ import { SongExperiencesPage } from './pages/SongExperiencesPage';
 import { SongAboutPage } from './pages/SongAboutPage';
 import { SongContactPage } from './pages/SongContactPage';
 import { SongAdminPage } from './pages/SongAdminPage';
+import { GuestLoginPage } from './pages/GuestLoginPage';
+import { GuestResidencePage } from './pages/GuestResidencePage';
 import { PublicShowcasePage } from './pages/PublicShowcasePage';
 import { PublicShowcaseBoundaryPage } from './pages/PublicShowcaseBoundaryPage';
 import { PublicOperationsTourPage } from './pages/PublicOperationsTourPage';
@@ -121,6 +123,9 @@ createRoot(rootElement).render(
             <Route path="/wallet/:bookingId" element={walletPaymentElement} />
             <Route path="/wallet/reward/:code" element={rewardWalletElement} />
             <Route path="/tour/operations" element={<PublicOperationsTourPage />} />
+            <Route path="/dang-nhap" element={<GuestLoginPage />} />
+            <Route path="/tai-khoan/luu-tru" element={<GuestResidencePage />} />
+            <Route path="/tai-khoan/luu-tru/:bookingId" element={<GuestResidencePage />} />
             <Route path="/sim" element={<Suspense fallback={<p>Loading…</p>}><OtaSimulatorLanding /></Suspense>} />
             <Route path="/sim/:platform" element={<Suspense fallback={<p>Loading…</p>}><OtaSimulatorPlatformPage /></Suspense>} />
             <Route path="/about" element={<AboutPage />} />

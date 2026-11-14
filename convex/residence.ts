@@ -1,8 +1,60 @@
 import { ConvexError, v } from 'convex/values';
+import { getAuthUserId } from '@convex-dev/auth/server';
 import { internalMutation, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
+
+const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+const documentTypeArg = v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other'));
+const DOCUMENT_PATTERNS: Record<string, { pattern: RegExp; message: string }> = {
+  cccd: { pattern: /^\d{12}$/, message: 'Số định danh cá nhân / CCCD gồm 12 chữ số.' },
+  cmnd: { pattern: /^(\d{9}|\d{12})$/, message: 'Số CMND gồm 9 hoặc 12 chữ số.' },
+  passport: { pattern: /^[A-Z0-9]{6,12}$/, message: 'Số hộ chiếu gồm 6–12 chữ hoặc số.' },
+};
+
+/** Địa chỉ lưu trú: the booked unit's address, else the property's. Never client-supplied. */
+export async function stayAddressFor(ctx: QueryCtx | MutationCtx, booking: Doc<'bookings'>): Promise<string> {
+  const unitType = await ctx.db.get(booking.unitTypeId);
+  const property = await ctx.db.get(booking.propertyId);
+  const unitAddress = unitType?.address?.trim();
+  const propertyAddress = property?.address?.trim();
+  if (unitAddress && property?.name) return `${property.name} — ${unitAddress}`;
+  return unitAddress || propertyAddress || '';
+}
+
+/** How many adults still lack a tạm trú declaration (0 when the property does not require it). */
+export async function residenceProgress(ctx: QueryCtx | MutationCtx, booking: Doc<'bookings'>) {
+  const property = await ctx.db.get(booking.propertyId);
+  const required = property?.requireResidenceDeclaration ? booking.adults : 0;
+  const rows = await ctx.db
+    .query('residenceRegistrations')
+    .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
+    .collect();
+  const declared = rows.filter((row) => row.registrationType === 'tam_tru').length;
+  return { required, declared, missing: Math.max(0, required - declared) };
+}
+
+/** Check-in gate shared by every mutation that moves a booking to checked_in. */
+export async function assertResidenceComplete(ctx: MutationCtx, booking: Doc<'bookings'>) {
+  const { missing } = await residenceProgress(ctx, booking);
+  if (missing > 0) {
+    throw new ConvexError({
+      code: 'RESIDENCE_INCOMPLETE',
+      message: `Còn thiếu ${missing} tờ khai lưu trú. Khách cần khai báo đủ trước khi nhận phòng.`,
+    });
+  }
+}
+
+async function requireMyBooking(ctx: QueryCtx | MutationCtx, bookingId: Id<'bookings'>): Promise<Doc<'bookings'>> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new ConvexError({ code: 'UNAUTHENTICATED', message: 'Vui lòng đăng nhập.' });
+  const booking = await ctx.db.get(bookingId);
+  if (!booking || booking.userId !== userId) {
+    throw new ConvexError({ code: 'NOT_FOUND', message: 'Không tìm thấy đơn đặt phòng của bạn.' });
+  }
+  return booking;
+}
 
 async function requireGuestBooking(
   ctx: QueryCtx | MutationCtx,
@@ -68,7 +120,7 @@ export const registerForGuest = mutation({
     confirmationCode: v.string(),
     email: v.string(),
     fullName: v.string(),
-    documentType: v.union(v.literal('cccd'), v.literal('passport'), v.literal('other')),
+    documentType: v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other')),
     documentNumber: v.string(),
     nationality: v.optional(v.string()),
     dateOfBirth: v.optional(v.string()),
@@ -126,16 +178,157 @@ export const registerForGuest = mutation({
       checkInDate: args.checkInDate,
       checkOutDate: args.checkOutDate,
       reason: sanitizeText(args.reason, 400),
+      stayAddress: (await stayAddressFor(ctx, booking)) || undefined,
       status: 'declared',
       absenceStatus: args.registrationType === 'tam_vang' ? 'away' : undefined,
       submittedBy: 'guest',
       consentAt: now,
-      retentionUntil: now + 180 * 24 * 60 * 60 * 1000,
+      retentionUntil: now + RETENTION_MS,
       createdAt: now,
       updatedAt: now,
     });
 
     return { registrationId };
+  },
+});
+
+/**
+ * Signed-in guest: a booking of mine with its declarations and what is still
+ * missing. Used by the bell page; access is by booking.userId only.
+ */
+export const listForMyBooking = query({
+  args: { bookingId: v.id('bookings') },
+  handler: async (ctx, args) => {
+    const booking = await requireMyBooking(ctx, args.bookingId);
+    const [property, unit, guest] = await Promise.all([
+      ctx.db.get(booking.propertyId),
+      ctx.db.get(booking.unitId),
+      booking.guestId ? ctx.db.get(booking.guestId) : null,
+    ]);
+    const rows = (await ctx.db
+      .query('residenceRegistrations')
+      .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
+      .collect())
+      .filter((row) => row.registrationType === 'tam_tru')
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const progress = await residenceProgress(ctx, booking);
+    return {
+      bookingId: booking._id,
+      confirmationCode: booking.confirmationCode,
+      status: booking.status,
+      propertyName: property?.name ?? '',
+      unitName: unit?.name ?? '',
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      adults: booking.adults,
+      children: booking.children,
+      stayAddress: await stayAddressFor(ctx, booking),
+      defaultFullName: guest?.name ?? '',
+      progress,
+      registrations: rows.map((row) => ({
+        _id: row._id,
+        fullName: row.fullName,
+        documentType: row.documentType,
+        documentNumber: row.documentNumber,
+        reason: row.reason ?? '',
+        checkInDate: row.checkInDate,
+        checkOutDate: row.checkOutDate,
+        stayAddress: row.stayAddress ?? '',
+        status: row.status,
+        createdAt: row.createdAt,
+      })),
+    };
+  },
+});
+
+/** Signed-in guest: thông báo lưu trú for one person on my booking. */
+export const registerForMyBooking = mutation({
+  args: {
+    bookingId: v.id('bookings'),
+    fullName: v.string(),
+    documentType: documentTypeArg,
+    documentNumber: v.string(),
+    nationality: v.optional(v.string()),
+    reason: v.string(),
+    checkInDate: v.string(),
+    checkOutDate: v.string(),
+    consent: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const booking = await requireMyBooking(ctx, args.bookingId);
+    if (!['hold', 'pending', 'confirmed', 'checked_in'].includes(booking.status)) {
+      throw new ConvexError({ code: 'BOOKING_NOT_ACTIVE', message: 'Đơn đặt phòng này không còn hiệu lực để khai báo.' });
+    }
+    const fullName = args.fullName.trim().replace(/\s+/g, ' ');
+    if (fullName.length < 2 || fullName.length > 100) {
+      throw new ConvexError({ code: 'FULL_NAME_REQUIRED', message: 'Vui lòng nhập đầy đủ họ và tên.' });
+    }
+    const documentNumber = args.documentNumber.trim().replace(/\s+/g, '').toUpperCase();
+    const rule = DOCUMENT_PATTERNS[args.documentType];
+    if (!documentNumber || (rule && !rule.pattern.test(documentNumber)) || documentNumber.length > 30) {
+      throw new ConvexError({ code: 'DOCUMENT_NUMBER_INVALID', message: rule?.message ?? 'Vui lòng nhập số giấy tờ.' });
+    }
+    const reason = args.reason.trim();
+    if (!reason) throw new ConvexError({ code: 'REASON_REQUIRED', message: 'Vui lòng nhập lý do lưu trú.' });
+    if (!args.consent) {
+      throw new ConvexError({ code: 'CONSENT_REQUIRED', message: 'Bạn cần đồng ý để cơ sở lưu trú lưu và xử lý thông tin.' });
+    }
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(args.checkInDate) || !/^\d{4}-\d{2}-\d{2}$/.test(args.checkOutDate)
+      || args.checkInDate < booking.checkIn || args.checkOutDate > booking.checkOut || args.checkOutDate <= args.checkInDate
+    ) {
+      throw new ConvexError({ code: 'INVALID_DATES', message: `Thời gian lưu trú phải nằm trong ${booking.checkIn} → ${booking.checkOut}.` });
+    }
+    const existing = await ctx.db
+      .query('residenceRegistrations')
+      .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
+      .collect();
+    const declared = existing.filter((row) => row.registrationType === 'tam_tru');
+    if (declared.length >= booking.adults + booking.children) {
+      throw new ConvexError({ code: 'TOO_MANY_DECLARATIONS', message: 'Đã khai báo đủ số khách của đơn đặt phòng.' });
+    }
+    if (declared.some((row) => row.documentNumber === documentNumber)) {
+      throw new ConvexError({ code: 'DUPLICATE_DOCUMENT', message: 'Giấy tờ này đã được khai báo cho đơn đặt phòng.' });
+    }
+
+    const now = Date.now();
+    const registrationId = await ctx.db.insert('residenceRegistrations', {
+      propertyId: booking.propertyId,
+      bookingId: booking._id,
+      fullName,
+      documentType: args.documentType,
+      documentNumber,
+      nationality: sanitizeText(args.nationality, 80) ?? 'Việt Nam',
+      registrationType: 'tam_tru',
+      checkInDate: args.checkInDate,
+      checkOutDate: args.checkOutDate,
+      reason: reason.slice(0, 400),
+      stayAddress: (await stayAddressFor(ctx, booking)) || undefined,
+      status: 'declared',
+      submittedBy: 'guest',
+      consentAt: now,
+      retentionUntil: now + RETENTION_MS,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { registrationId };
+  },
+});
+
+/** Signed-in guest: withdraw one of my declarations before staff have recorded it. */
+export const removeForMyBooking = mutation({
+  args: { bookingId: v.id('bookings'), registrationId: v.id('residenceRegistrations') },
+  handler: async (ctx, args) => {
+    const booking = await requireMyBooking(ctx, args.bookingId);
+    const row = await ctx.db.get(args.registrationId);
+    if (!row || row.bookingId !== booking._id) {
+      throw new ConvexError({ code: 'NOT_FOUND', message: 'Không tìm thấy bản khai báo.' });
+    }
+    if (row.status !== 'declared') {
+      throw new ConvexError({ code: 'ALREADY_VERIFIED', message: 'Bản khai báo đã được cơ sở lưu trú ghi nhận, không thể tự xóa.' });
+    }
+    await ctx.db.delete(row._id);
+    return { removed: true };
   },
 });
 

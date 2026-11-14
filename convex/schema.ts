@@ -1198,7 +1198,7 @@ export default defineSchema({
     propertyId: v.id('properties'),
     bookingId: v.id('bookings'),
     fullName: v.string(),
-    documentType: v.union(v.literal('cccd'), v.literal('passport'), v.literal('other')),
+    documentType: v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other')),
     documentNumber: v.string(),
     nationality: v.string(),
     dateOfBirth: v.optional(v.string()),

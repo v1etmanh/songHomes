@@ -102,7 +102,7 @@ type ResidenceRecord = {
   confirmationCode: string;
   bookingStatus: string;
   fullName: string;
-  documentType: 'cccd' | 'passport' | 'other';
+  documentType: 'cccd' | 'cmnd' | 'passport' | 'other';
   documentNumber: string;
   nationality: string;
   dateOfBirth?: string;

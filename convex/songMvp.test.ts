@@ -45,7 +45,9 @@ describe('Sóng Homestay v2 MVP', () => {
     const { property, units } = await seeded(t);
     const unit = units[0];
     const ratePlan = await t.run((ctx) => ctx.db.query('ratePlans').withIndex('by_unitType', (q) => q.eq('unitTypeId', unit.unitTypeId).eq('active', true)).unique());
-    const hold = await t.mutation(api.bookings.createHold, {
+    const guestUserId = await t.run((ctx) => ctx.db.insert('users', { email: 'pending@example.com', name: 'Khách' }));
+    const asGuest = t.withIdentity({ subject: `${guestUserId}|test-session` });
+    const hold = await asGuest.mutation(api.bookings.createHold, {
       unitId: unit._id, ratePlanId: ratePlan!._id, checkIn: '2027-02-10', checkOut: '2027-02-12', adults: 2, children: 0,
       guest: { name: 'Khách chờ xác nhận', email: 'pending@example.com', phone: '0911000000', marketingOptIn: false }, addOns: [],
     });

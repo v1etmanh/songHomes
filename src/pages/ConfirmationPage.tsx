@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from 'convex/react';
-import { PartyPopper, ShieldAlert } from 'lucide-react';
+import { useConvexAuth, useQuery } from 'convex/react';
+import { BellRing, PartyPopper, ShieldAlert } from 'lucide-react';
 
 import { api } from '../../convex/_generated/api';
 import { Spinner } from '../components/Spinner';
@@ -43,6 +43,7 @@ export function ConfirmationPage() {
           <h1 className="mt-2 text-2xl font-semibold text-stone-900">Đặt phòng đang chờ xác nhận</h1>
           <p className="mt-2 text-stone-500">Sóng Homestay đã khóa lịch và sẽ liên hệ với bạn để xác nhận thông tin.</p>
           <p className="mt-4 rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900">Mã đặt phòng <span className="font-mono font-bold">{booking.confirmationCode}</span></p>
+          <ResidenceReminder confirmationCode={booking.confirmationCode} />
           <dl className="mt-6 space-y-2 text-left text-sm text-stone-600">
             <div className="flex justify-between gap-4"><dt>Khách đặt</dt><dd className="font-medium text-stone-900">{booking.guestName}</dd></div>
             <div className="flex justify-between gap-4"><dt>Chỗ nghỉ</dt><dd className="text-right font-medium text-stone-900">{booking.unitTypeName}</dd></div>
@@ -155,6 +156,24 @@ export function ConfirmationPage() {
           Manage this booking
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** Mandatory thông báo lưu trú prompt shown right after a Sóng booking is submitted. */
+function ResidenceReminder({ confirmationCode }: { confirmationCode: string }) {
+  const { isAuthenticated } = useConvexAuth();
+  const mine = useQuery(api.guestAccount.myBookings, isAuthenticated ? {} : 'skip');
+  const row = mine?.find((b) => b.confirmationCode === confirmationCode);
+  if (!row || row.progress.required === 0) return null;
+  if (row.progress.missing === 0) {
+    return <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Đã khai báo lưu trú đủ cho tất cả người lớn.</p>;
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 text-left text-sm text-amber-900">
+      <p className="flex items-center gap-2 font-bold"><BellRing className="h-4 w-4" />Bắt buộc: khai báo lưu trú</p>
+      <p className="mt-1">Cần thông báo lưu trú cho {row.progress.missing} người lớn trước khi nhận phòng (họ tên, số định danh / CMND / hộ chiếu, lý do và thời gian lưu trú). Lễ tân không thể check-in khi còn thiếu.</p>
+      <Link to={`/tai-khoan/luu-tru/${row.bookingId}`} className="btn-primary mt-3 inline-flex">Khai báo ngay</Link>
     </div>
   );
 }

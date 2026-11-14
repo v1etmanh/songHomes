@@ -3,6 +3,7 @@ import { mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { markPropertyDirtyInline } from './channel/ari';
+import { assertResidenceComplete } from './residence';
 import { requireMutationPropertyCapability, requirePropertyCapability, requirePropertyFeature } from './staff';
 
 async function replay<T>(ctx: MutationCtx, propertyId: Id<'properties'>, requestId: string, action: string): Promise<T | null> {
@@ -140,6 +141,7 @@ export const transition = mutation({
       const service = await ctx.db.query('unitServiceStates').withIndex('by_unit', (q) => q.eq('unitId', booking.unitId)).unique();
       if (service && service.state !== 'ready' && !args.overrideNotReady) throw new ConvexError(`UNIT_NOT_READY:${service.state}`);
       if (service && service.state !== 'ready' && args.overrideNotReady && !['owner', 'manager'].includes(access.role)) throw new ConvexError('MANAGER_OVERRIDE_REQUIRED');
+      await assertResidenceComplete(ctx, booking);
     }
     const status = args.transition === 'check_in' ? 'checked_in' : args.transition === 'check_out' ? 'checked_out' : 'no_show';
     const now = Date.now();

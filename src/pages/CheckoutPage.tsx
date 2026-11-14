@@ -73,7 +73,7 @@ export function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    if (booking?.status === 'confirmed') {
+    if (booking?.status === 'confirmed' || booking?.status === 'pending') {
       navigate(`/confirmation/${booking.confirmationCode}`, { replace: true });
     }
   }, [booking, navigate]);

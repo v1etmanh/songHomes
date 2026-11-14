@@ -3,6 +3,7 @@ import { Password } from '@convex-dev/auth/providers/Password';
 import GitHub from '@auth/core/providers/github';
 import Google from '@auth/core/providers/google';
 import MicrosoftEntraID from '@auth/core/providers/microsoft-entra-id';
+import { ConvexError } from 'convex/values';
 import { query } from './_generated/server';
 
 /**
@@ -42,7 +43,20 @@ export const oauthConfigured = {
   ),
 };
 
-const providers: Parameters<typeof convexAuth>[0]['providers'] = [Password];
+// Guest sign-up (requireGuestAccount properties) also records name/phone so the
+// booking form can prefill them. Email is only trimmed: lowercasing would break
+// sign-in for existing accounts created with mixed case.
+const PasswordWithProfile = Password({
+  profile(params) {
+    const email = typeof params.email === 'string' ? params.email.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConvexError('INVALID_EMAIL');
+    const name = typeof params.name === 'string' ? params.name.trim().slice(0, 80) : '';
+    const phone = typeof params.phone === 'string' ? params.phone.trim().slice(0, 30) : '';
+    return { email, ...(name ? { name } : {}), ...(phone ? { phone } : {}) };
+  },
+});
+
+const providers: Parameters<typeof convexAuth>[0]['providers'] = [PasswordWithProfile];
 if (oauthConfigured.github) providers.push(GitHub);
 if (oauthConfigured.google) providers.push(Google);
 // @convex-dev/auth materializes a bare provider function by calling it with NO

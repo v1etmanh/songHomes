@@ -32,9 +32,13 @@ data in a private deployment — never in this repo).
    single operator per deployment (no SaaS tenancy in v1).
 9. **Confirmation pages trust reactive queries, never redirects.** Success URLs
    render "finalizing…" until `byConfirmationCode` shows `confirmed`.
-10. **Guests have no accounts.** Manage-booking auth = confirmation code + email
-    match. Staff/admin auth = Convex Auth (M1): a users row grants NOTHING —
-    staff rights require an active staffProfiles row via requireStaff().
+10. **Guests have no accounts** — except on properties with
+    `requireGuestAccount` (Sóng Homestay), where `createHold` requires a signed-in
+    Convex Auth user, books under that account's email, and stamps
+    `bookings.userId`. Manage-booking auth = confirmation code + email match
+    still works everywhere. Staff/admin auth = Convex Auth (M1): a users row
+    grants NOTHING — staff rights require an active staffProfiles row via
+    requireStaff().
 11. **Settled payment rows are immutable.** Once a payments row leaves
     'pending' (paid/refunded/partially_refunded/failed), no webhook event may
     change it — redundant events return 'duplicate' and touch nothing. New
@@ -358,6 +362,18 @@ Don't promise otherwise anywhere — docs, UI copy, commit messages.
   simulations, never write `bookings` directly — changes reach OpenStays only
   through the normal one-way iCal pull — and are excluded from production
   artifacts. This is not OTA channel management.
+- 2026-11-14 (Sóng guest accounts + mandatory residence notice): Sóng guests
+  register/sign in (email + password, `/dang-nhap`) before booking; the
+  account sees only bookings with its own `userId`. Each adult on a
+  `requireResidenceDeclaration` booking needs a tạm trú declaration (họ tên,
+  số định danh/CMND/hộ chiếu, lý do, thời gian; địa chỉ lưu trú is filled
+  server-side from the unit). A header bell and `/tai-khoan/luu-tru` prompt
+  the guest; confirming a booking is allowed, but every check-in path
+  (`songHomestay.updateBookingStatus`, `frontDesk.transition`) refuses with
+  `RESIDENCE_INCOMPLETE` until all adults are declared. Known limitation: no
+  email verification, so an account can be opened with someone else's
+  address (same exposure as the old free-text email); API-key holds for Sóng
+  now fail with ACCOUNT_REQUIRED.
 - 2026-09-01 (production downstream boundary): the generic operator release is
   built only with `VITE_OPENSTAYS_PROFILE=production` and a generated
   `convex-production/` functions directory. Its release artifacts must not

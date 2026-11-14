@@ -34,6 +34,7 @@ import type * as emailDelivery from "../emailDelivery.js";
 import type * as emailTemplates from "../emailTemplates.js";
 import type * as frontDesk from "../frontDesk.js";
 import type * as groups from "../groups.js";
+import type * as guestAccount from "../guestAccount.js";
 import type * as housekeeping from "../housekeeping.js";
 import type * as housekeepingTemplates from "../housekeepingTemplates.js";
 import type * as housekeepingWork from "../housekeepingWork.js";
@@ -105,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   emailTemplates: typeof emailTemplates;
   frontDesk: typeof frontDesk;
   groups: typeof groups;
+  guestAccount: typeof guestAccount;
   housekeeping: typeof housekeeping;
   housekeepingTemplates: typeof housekeepingTemplates;
   housekeepingWork: typeof housekeepingWork;

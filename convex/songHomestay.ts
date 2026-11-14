@@ -4,6 +4,7 @@ import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { enumerateNights, generateConfirmationCode } from '../shared/pricing';
 import { markPropertyDirtyInline } from './channel/ari';
+import { assertResidenceComplete, residenceProgress } from './residence';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
 const activeBookingStatuses = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked']);
@@ -452,6 +453,7 @@ export const updateBookingStatus = mutation({
     if (!allowed[booking.status]?.includes(args.status)) {
       throw new ConvexError({ code: 'INVALID_STATUS_TRANSITION', message: `Không thể chuyển ${booking.status} sang ${args.status}.` });
     }
+    if (args.status === 'checked_in') await assertResidenceComplete(ctx, booking);
     if (args.status === 'cancelled') {
       const nights = await ctx.db.query('unitNights').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).collect();
       for (const night of nights) await ctx.db.delete(night._id);
@@ -520,6 +522,7 @@ export const adminSnapshot = query({
         checkIn: booking.checkIn, checkOut: booking.checkOut, adults: booking.adults, children: booking.children,
         status: booking.status, source: booking.source, totalCents, serviceCents,
         syncConflict: booking.syncConflict ?? false, createdAt: booking.createdAt,
+        residenceMissing: ['pending', 'confirmed'].includes(booking.status) ? (await residenceProgress(ctx, booking)).missing : 0,
       });
     }
     const periodNights = enumerateNights(args.startDate, args.endDate).length;

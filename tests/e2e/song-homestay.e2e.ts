@@ -20,6 +20,10 @@ test('Sóng Homestay public and admin MVP is ready for the local demo', async ({
   await expect(page.getByRole('heading', { name: 'Tìm không gian phù hợp với bạn' })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('main').getByRole('heading', { level: 2 })).toHaveCount(5);
 
+  await page.locator('a[href^="/p/song-homestay/stay/"]').first().click();
+  await expect(page.getByRole('heading', { name: 'Đăng nhập để đặt phòng' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'Tạo tài khoản' })).toHaveAttribute('href', /\/dang-nhap\?tab=register&next=/);
+
   await page.goto('/admin/dashboard');
   await expect(page.getByRole('heading', { name: 'Dashboard tổng quan' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Doanh thu trong kỳ', { exact: true })).toBeVisible();
@@ -29,7 +33,7 @@ test('Sóng Homestay public and admin MVP is ready for the local demo', async ({
   await expect(page.getByRole('button', { name: 'Lưu' })).toHaveCount(5);
   await page.goto('/admin/ical');
   await expect(page.getByRole('heading', { name: 'Đồng bộ dữ liệu iCal' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Nhập dữ liệu iCal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Đồng bộ tất cả ngay' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(browserErrors).toEqual([]);
 });

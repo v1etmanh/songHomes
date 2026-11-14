@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { Mail, MapPin, Mountain, Phone, Waves } from 'lucide-react';
 import { PUBLIC_SHOWCASE } from '../lib/publicShowcase';
+import { GuestAccountMenu } from './GuestAccountMenu';
 
 /** Shared chrome (header/footer) for every route, rendered via <Outlet />. */
 export function AppLayout() {
@@ -37,14 +38,14 @@ export function AppLayout() {
               </span>
               <span className="font-sans text-lg font-extrabold tracking-tight sm:text-xl">Sóng Homestay</span>
             </Link>
-            <nav aria-label="Điều hướng chính" className="hidden items-center gap-1 text-sm font-semibold text-slate-600 md:flex">
-              <Link to="/p/song-homestay" className={`rounded-full px-4 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795] ${isSongLanding && !location.hash ? 'bg-[#dff6fb] text-[#087795]' : ''}`}>Trang chủ</Link>
-              <Link to="/p/song-homestay/stays" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Chỗ nghỉ</Link>
-              <Link to="/p/song-homestay/experiences" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Trải nghiệm</Link>
-              <Link to="/p/song-homestay/about" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Giới thiệu</Link>
-              <Link to="/p/song-homestay/contact" className="rounded-full px-3 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Liên hệ</Link>
+            <nav aria-label="Điều hướng chính" className="hidden items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-slate-600 lg:flex">
+              <Link to="/p/song-homestay" className={`rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795] ${isSongLanding && !location.hash ? 'bg-[#dff6fb] text-[#087795]' : ''}`}>Trang chủ</Link>
+              <Link to="/p/song-homestay/stays" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Chỗ nghỉ</Link>
+              <Link to="/p/song-homestay/experiences" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Trải nghiệm</Link>
+              <Link to="/p/song-homestay/about" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Giới thiệu</Link>
+              <Link to="/p/song-homestay/contact" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Liên hệ</Link>
             </nav>
-            <div className="flex items-center gap-2"><Link to="/p/song-homestay/booking" className="rounded-full bg-[#087795] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#065f78]">Đặt phòng</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#0b7e9f]/25 px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#0b7e9f] hover:bg-[#087795] hover:text-white sm:inline">Quản trị</Link> : null}</div>
+            <div className="flex items-center gap-2"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#087795] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#065f78]">Đặt phòng</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#0b7e9f]/25 px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#0b7e9f] hover:bg-[#087795] hover:text-white xl:inline">Quản trị</Link> : null}</div>
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className={isSongPublic ? (isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8') : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>

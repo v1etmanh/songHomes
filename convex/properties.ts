@@ -152,6 +152,7 @@ export const unitTypeBySlug = query({
         taxRateBps: property.taxRateBps,
         taxLabel: property.taxLabel,
         currency: property.currency,
+        requireGuestAccount: property.requireGuestAccount === true,
       },
       unitType: {
         unitTypeId: unitType._id,

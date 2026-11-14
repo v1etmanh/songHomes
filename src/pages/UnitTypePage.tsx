@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery } from 'convex/react';
-import { Bath, BedDouble, MapPin, Ruler, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useConvexAuth, useMutation, useQuery } from 'convex/react';
+import { Bath, BedDouble, LogIn, MapPin, Ruler, Users } from 'lucide-react';
 
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -65,6 +65,22 @@ export function UnitTypePage() {
 
   const createHold = useMutation(api.bookings.createHold);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
+  const accountRequired = detail?.property.requireGuestAccount === true;
+  const needsSignIn = accountRequired && !authLoading && !isAuthenticated;
+  const me = useQuery(api.guestAccount.me, accountRequired && isAuthenticated ? {} : 'skip');
+  useEffect(() => {
+    if (!me) return;
+    setGuest((current) => ({
+      ...current,
+      name: current.name || me.name,
+      phone: current.phone || me.phone,
+      email: me.email,
+    }));
+  }, [me]);
+  const returnPath = `${location.pathname}${range.checkIn && range.checkOut ? `?checkIn=${range.checkIn}&checkOut=${range.checkOut}` : ''}`;
 
   // A night is disabled in the picker only if EVERY unit is blocked that
   // night (a unit type can have multiple physical units).
@@ -161,6 +177,8 @@ export function UnitTypePage() {
   const promoPlaceholder = detail.property.slug === 'song-homestay' ? 'SONGDANANG10' : defaultPromoPlaceholder;
 
   const canSubmit =
+    !needsSignIn &&
+    !(accountRequired && authLoading) &&
     !!ratePlan &&
     !!range.checkIn &&
     !!range.checkOut &&
@@ -303,10 +321,22 @@ export function UnitTypePage() {
               ) : null}
             </div>
 
-            <div className="card p-6">
-              <h2 className="mb-4 text-lg font-semibold text-stone-900">Thông tin người đặt</h2>
-              <GuestForm value={guest} onChange={setGuest} maxOccupancy={unitType.maxOccupancy ?? 20} />
-            </div>
+            {needsSignIn ? (
+              <div className="card border-cyan-200 p-6 text-center">
+                <LogIn className="mx-auto h-8 w-8 text-[#087795]" />
+                <h2 className="mt-2 text-lg font-semibold text-stone-900">Đăng nhập để đặt phòng</h2>
+                <p className="mt-1 text-sm text-stone-500">Tài khoản giúp bạn theo dõi đơn và khai báo lưu trú cho khách đi cùng.</p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Link className="btn-primary" to={`/dang-nhap?next=${encodeURIComponent(returnPath)}`}>Đăng nhập</Link>
+                  <Link className="btn-secondary" to={`/dang-nhap?tab=register&next=${encodeURIComponent(returnPath)}`}>Tạo tài khoản</Link>
+                </div>
+              </div>
+            ) : (
+              <div className="card p-6">
+                <h2 className="mb-4 text-lg font-semibold text-stone-900">Thông tin người đặt</h2>
+                <GuestForm value={guest} onChange={setGuest} maxOccupancy={unitType.maxOccupancy ?? 20} emailLocked={accountRequired} />
+              </div>
+            )}
 
             {pricePreview ? (
               <div className="card p-6">

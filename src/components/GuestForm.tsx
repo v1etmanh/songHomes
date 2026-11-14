@@ -11,10 +11,12 @@ export interface GuestFormProps {
   value: GuestFormValue;
   onChange: (value: GuestFormValue) => void;
   maxOccupancy: number;
+  /** Signed-in bookings use the account email; the server ignores any other. */
+  emailLocked?: boolean;
 }
 
 /** Guest contact + party-size form used on the unit-type booking page. */
-export function GuestForm({ value, onChange, maxOccupancy }: GuestFormProps) {
+export function GuestForm({ value, onChange, maxOccupancy, emailLocked = false }: GuestFormProps) {
   const set = <K extends keyof GuestFormValue>(key: K, v: GuestFormValue[K]) =>
     onChange({ ...value, [key]: v });
 
@@ -43,6 +45,8 @@ export function GuestForm({ value, onChange, maxOccupancy }: GuestFormProps) {
             className="field-input"
             type="email"
             required
+            readOnly={emailLocked}
+            title={emailLocked ? 'Email của tài khoản đang đăng nhập' : undefined}
             value={value.email}
             onChange={(e) => set('email', e.target.value)}
           />

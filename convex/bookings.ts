@@ -1,4 +1,5 @@
 import { ConvexError, v } from 'convex/values';
+import { getAuthUserId } from '@convex-dev/auth/server';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
@@ -104,6 +105,20 @@ export const createHold = mutation({
     if (!property?.active) {
       throw new ConvexError({ code: 'UNIT_UNAVAILABLE', message: 'This property is not accepting bookings.' });
     }
+    // Account-required properties: the booking belongs to the signed-in user and
+    // its guest email is the account's, never a client-supplied one. The account
+    // grants no staff rights (requireStaff still demands a staffProfiles row).
+    let bookingUserId: Id<'users'> | undefined;
+    let guestEmail = args.guest.email;
+    if (property.requireGuestAccount) {
+      const userId = await getAuthUserId(ctx);
+      const user = userId ? await ctx.db.get(userId) : null;
+      if (!userId || !user?.email) {
+        throw new ConvexError({ code: 'ACCOUNT_REQUIRED', message: 'Vui lòng đăng nhập hoặc đăng ký để đặt phòng.' });
+      }
+      bookingUserId = userId;
+      guestEmail = user.email;
+    }
     const ratePlan = await ctx.db.get(args.ratePlanId);
     if (!ratePlan || !ratePlan.active || ratePlan.unitTypeId !== unit.unitTypeId) {
       throw new ConvexError({ code: 'RATE_PLAN_INVALID', message: 'Rate plan does not match this unit.' });
@@ -171,7 +186,7 @@ export const createHold = mutation({
     }
 
     // 3. Guest upsert via index.
-    const normalizedEmail = args.guest.email.trim().toLowerCase();
+    const normalizedEmail = guestEmail.trim().toLowerCase();
     const normalizedPhone = args.guest.phone.replace(/\D/g, '');
     if (!normalizedEmail.includes('@')) {
       throw new ConvexError({ code: 'GUEST_INVALID', message: 'A valid email is required.' });
@@ -202,7 +217,7 @@ export const createHold = mutation({
       (await ctx.db.insert('guests', {
         propertyId: unit.propertyId,
         name: args.guest.name.trim(),
-        email: args.guest.email.trim(),
+        email: guestEmail.trim(),
         phone: args.guest.phone.trim(),
         normalizedEmail,
         normalizedPhone,
@@ -312,6 +327,7 @@ export const createHold = mutation({
       unitId: args.unitId,
       unitTypeId: unit.unitTypeId,
       guestId,
+      userId: bookingUserId,
       ratePlanId: args.ratePlanId,
       checkIn: args.checkIn,
       checkOut: args.checkOut,

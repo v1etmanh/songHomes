@@ -9,7 +9,7 @@ import { extractErrorMessage } from './ErrorMessage';
 interface ResidenceRow {
   _id: Id<'residenceRegistrations'>;
   fullName: string;
-  documentType: 'cccd' | 'passport' | 'other';
+  documentType: 'cccd' | 'cmnd' | 'passport' | 'other';
   documentNumber: string;
   nationality: string;
   dateOfBirth?: string;
@@ -35,6 +35,7 @@ interface GuestResidencePayload {
 
 const DOC_TYPE_LABELS: Record<ResidenceRow['documentType'], string> = {
   cccd: 'CCCD / CMND',
+  cmnd: 'CMND',
   passport: 'Hộ chiếu (Passport)',
   other: 'Giấy tờ khác',
 };
