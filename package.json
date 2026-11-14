@@ -23,6 +23,7 @@
     "convex:codegen": "convex codegen",
     "seed": "convex run seed:run",
     "song:reset": "convex run songReset:run",
+    "song:sample": "convex run songSampleData:run",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "wavelength:runtime": "powershell -ExecutionPolicy Bypass -File scripts/install-wavelength-runtime.ps1",
