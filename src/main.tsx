@@ -33,6 +33,8 @@ const WavelengthWalletPage =
   INCLUDE_WAVELENGTH_WALLET ? lazy(() => import('./pages/WavelengthWalletPage')) : null;
 const ConsensusRewardPage =
   INCLUDE_WAVELENGTH_WALLET ? lazy(() => import('./pages/ConsensusRewardPage')) : null;
+const OtaSimulatorLanding = lazy(() => import('./pages/OtaSimulatorPage').then((module) => ({ default: module.OtaSimulatorLanding })));
+const OtaSimulatorPlatformPage = lazy(() => import('./pages/OtaSimulatorPage').then((module) => ({ default: module.OtaSimulatorPlatformPage })));
 const AdminShell =
   INCLUDE_PUBLIC_STAFF ? lazy(() => import('./components/AdminShell').then((module) => ({ default: module.AdminShell }))) : null;
 const AdminCommandPage =
@@ -119,6 +121,8 @@ createRoot(rootElement).render(
             <Route path="/wallet/:bookingId" element={walletPaymentElement} />
             <Route path="/wallet/reward/:code" element={rewardWalletElement} />
             <Route path="/tour/operations" element={<PublicOperationsTourPage />} />
+            <Route path="/sim" element={<Suspense fallback={<p>Loading…</p>}><OtaSimulatorLanding /></Suspense>} />
+            <Route path="/sim/:platform" element={<Suspense fallback={<p>Loading…</p>}><OtaSimulatorPlatformPage /></Suspense>} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/admin/login" element={staffLoginElement} />
             <Route path="/admin" element={staffShellElement}>

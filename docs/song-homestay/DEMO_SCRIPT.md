@@ -16,10 +16,10 @@ Mở hai tab: `/p/song-homestay` và `/admin/command`.
 2. **Khách đặt web (2 phút):** chọn căn/ngày, thuê xe hoặc vé Bà Nà, nhập khách, xác nhận thanh toán tại homestay.
 3. **Lịch tập trung (1 phút):** yêu cầu vừa tạo xuất hiện ở trạng thái Chờ xác nhận và khóa ngày.
 4. **Booking Zalo (1 phút):** admin nhập booking ngoài; thử nhập ngày trùng để chứng minh hệ thống từ chối.
-5. **Double booking iCal (2 phút):** chọn kịch bản Airbnb 20–23/09 và Booking.com 22–24/09; bấm đồng bộ; chỉ ra đêm trùng 22/09.
+5. **Double booking iCal (2 phút):** mở `/admin/ical` (lần đầu bấm **Kết nối nền tảng giả lập**). Bấm **Mở trên Airbnb** ở một cơ sở, thêm đặt phòng trùng ngày với một booking đang có (hoặc bấm **Tạo xung đột**), rồi **Sang OpenStays đồng bộ ngay** → **Đồng bộ ngay**. Chỉ ra ô báo xung đột, email cảnh báo trong **Hộp thư cảnh báo** và dòng mới ở `/admin/conflicts`. Bấm **Giả lập link lỗi** rồi đồng bộ để thấy cảnh báo "Đồng bộ lỗi"; bật lại để thấy "Đã khôi phục". Lịch còn tự kéo mỗi 30 phút và nền tảng giả lập tự sinh thay đổi mỗi ngày lúc 00:30.
 6. **Xử lý (1 phút):** chuyển một booking sang căn còn trống; cảnh báo biến mất, giá giữ nguyên.
 7. **Lưu trú và quản trị (1 phút):** mở danh sách khai báo, quản lý căn và dịch vụ.
-8. **Giới hạn (30 giây):** iCal/API OTA thật và cổng thanh toán thật ngoài scope; hệ thống dùng iCal giả lập nhưng database, lịch và conflict logic là thật.
+8. **Giới hạn (30 giây):** API OTA thật và cổng thanh toán thật ngoài scope; nền tảng ở `/sim` là mô phỏng nhưng phát link iCal thật qua HTTP, và database, lịch, đồng bộ, conflict logic là thật. Trên bản demo email cảnh báo chỉ ghi log và hiện trong hộp thư.
 
 ## Câu trả lời ngắn cho phản biện
 

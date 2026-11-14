@@ -286,7 +286,7 @@ export function AdminShell() {
         <aside className={`border-b text-stone-200 lg:min-h-screen lg:border-b-0 lg:border-r ${property.slug === 'song-homestay' ? 'border-sky-900 bg-gradient-to-b from-[#0b3854] via-[#0d4f70] to-[#0b3854] lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-60 lg:flex-col lg:overflow-y-auto' : 'border-stone-200 bg-stone-950'}`}>
           {property.slug === 'song-homestay' ? <div className="hidden border-b border-white/10 px-7 py-8 lg:block"><div className="flex items-center gap-3 text-white"><span className="grid h-12 w-12 place-items-center rounded-full bg-white/10"><Gauge className="h-7 w-7 text-cyan-200" /></span><div><p className="text-xl font-extrabold leading-5">Sóng</p><p className="text-xl font-extrabold leading-5">Homestay</p></div></div></div> : null}
           <nav aria-label="Staff operations" className="flex gap-2 overflow-x-auto p-3 lg:block lg:shrink-0 lg:space-y-5 lg:overflow-visible lg:p-4">
-            {property.slug === 'song-homestay' ? <div className="flex gap-1 lg:block lg:space-y-1">{SONG_NAV_ITEMS.map((item) => { const Icon=item.icon; return <NavLink key={item.to} to={item.to} className={({isActive}) => `flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold transition ${isActive ? 'bg-[#2d83c5] text-white shadow-lg shadow-sky-950/20' : 'text-sky-50/85 hover:bg-white/10 hover:text-white'}`}><Icon className="h-5 w-5" />{item.label}</NavLink>; })}</div> : NAV_GROUPS.map((group) => (
+            {property.slug === 'song-homestay' ? <div className="flex gap-1 lg:block lg:space-y-1">{SONG_NAV_ITEMS.map((item) => { const Icon=item.icon; return <NavLink key={item.to} to={item.to} className={({isActive}) => `flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold transition ${isActive ? 'bg-[#2d83c5] text-white shadow-lg shadow-sky-950/20' : 'text-sky-50/85 hover:bg-white/10 hover:text-white'}`}><Icon className="h-5 w-5" />{item.label}{item.to === '/admin/ical' ? <IcalUnreadBadge propertyId={property.propertyId} /> : null}</NavLink>; })}</div> : NAV_GROUPS.map((group) => (
               <div key={group.label} className="shrink-0 lg:space-y-1">
                 <p className="hidden px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 lg:block">
                   {group.label}
@@ -325,4 +325,10 @@ export function AdminShell() {
 
 export function useAdminProperty(): AdminPropertyContext {
   return useOutletContext<AdminPropertyContext>();
+}
+
+function IcalUnreadBadge({ propertyId }: { propertyId: Id<'properties'> }) {
+  const unread = useQuery(api.icalAlerts.unreadCount, { propertyId });
+  if (!unread) return null;
+  return <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">{unread}</span>;
 }

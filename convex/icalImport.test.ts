@@ -105,7 +105,7 @@ describe('applyUnitImport', () => {
       label: 'Airbnb',
       events: [{ uid: 'evt-1@airbnb.com', startDate: '2026-07-15', endDate: '2026-07-18' }],
     });
-    expect(result).toEqual({ inserted: 1, updated: 0, removed: 0, conflicts: 0 });
+    expect(result).toEqual({ inserted: 1, updated: 0, removed: 0, conflicts: 0, newConflictBookingIds: [] });
 
     const booking = await t.run(async (ctx) =>
       ctx.db
@@ -141,7 +141,7 @@ describe('applyUnitImport', () => {
       label: 'Airbnb',
       events,
     });
-    expect(result2).toEqual({ inserted: 0, updated: 0, removed: 0, conflicts: 0 });
+    expect(result2).toEqual({ inserted: 0, updated: 0, removed: 0, conflicts: 0, newConflictBookingIds: [] });
 
     const bookings = await t.run(async (ctx) =>
       ctx.db
@@ -169,7 +169,7 @@ describe('applyUnitImport', () => {
       label: 'Airbnb',
       events: [{ uid: 'evt-1@airbnb.com', startDate: '2026-07-20', endDate: '2026-07-23' }],
     });
-    expect(result).toEqual({ inserted: 0, updated: 1, removed: 0, conflicts: 0 });
+    expect(result).toEqual({ inserted: 0, updated: 1, removed: 0, conflicts: 0, newConflictBookingIds: [] });
 
     const booking = await t.run(async (ctx) =>
       ctx.db
@@ -203,7 +203,7 @@ describe('applyUnitImport', () => {
       label: 'Airbnb',
       events: [],
     });
-    expect(result).toEqual({ inserted: 0, updated: 0, removed: 1, conflicts: 0 });
+    expect(result).toEqual({ inserted: 0, updated: 0, removed: 1, conflicts: 0, newConflictBookingIds: [] });
 
     const booking = await t.run(async (ctx) =>
       ctx.db
@@ -418,7 +418,7 @@ describe('applyUnitImport', () => {
       label: 'Airbnb',
       events,
     });
-    expect(result).toEqual({ inserted: 0, updated: 0, removed: 0, conflicts: 0 });
+    expect(result).toEqual({ inserted: 0, updated: 0, removed: 0, conflicts: 0, newConflictBookingIds: [] });
     const sync = await t.run(async (ctx) =>
       ctx.db
         .query('channelSync')

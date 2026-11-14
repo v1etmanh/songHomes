@@ -434,4 +434,23 @@ http.route({
   }),
 });
 
+/**
+ * Demo-only simulated booking platform feeds: GET /sim/ical/<token>.ics.
+ * Not present in the production http template.
+ */
+http.route({
+  pathPrefix: '/sim/ical/',
+  method: 'GET',
+  handler: httpAction(async (ctx, request) => {
+    const match = new URL(request.url).pathname.match(/\/sim\/ical\/([A-Za-z0-9]+)\.ics$/);
+    if (!match) return new Response('not found', { status: 404 });
+    const feed = await ctx.runQuery(internal.otaSimulator.feedText, { token: match[1] });
+    if (feed === null) return new Response('not found', { status: 404 });
+    return new Response(feed, {
+      status: 200,
+      headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }),
+});
+
 export default http;

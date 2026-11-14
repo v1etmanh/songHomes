@@ -2,9 +2,11 @@ import { ConvexError, v } from 'convex/values';
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import type { MutationCtx } from './_generated/server';
+import type { ActionCtx, MutationCtx } from './_generated/server';
 import { parseIcs } from '../shared/ical';
+import type { FunctionArgs } from 'convex/server';
 import { markPropertyDirtyInline } from './channel/ari';
+import { deliverAlerts } from './icalAlerts';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
 export const authorizeManualImport = mutation({
@@ -47,7 +49,20 @@ export const uploadManualIcs = action({
       importedAt,
       summary: `manual:${result.inserted}:${result.updated}:${result.removed}:${result.conflicts}`,
     });
-    return { ...result, warnings: parsed.warnings, importedAt };
+    await recordRunAndAlert(ctx, {
+      propertyId: args.propertyId,
+      unitId: args.unitId,
+      label: args.source,
+      trigger: 'manual',
+      ok: true,
+      inserted: result.inserted,
+      updated: result.updated,
+      removed: result.removed,
+      conflicts: result.conflicts,
+      newConflictBookingIds: result.newConflictBookingIds,
+    });
+    const { newConflictBookingIds: _ids, ...counts } = result;
+    return { ...counts, warnings: parsed.warnings, importedAt };
   },
 });
 
@@ -69,7 +84,7 @@ export const recordManualImport = internalMutation({
  * Airbnb listing, a legacy-PMS bridge) into unitNights so external bookings
  * block availability here. The export side already ships (convex/ical.ts).
  *
- * syncAll (15-min cron):
+ * syncAll (30-min cron):
  *  1. runQuery internal.icalImport.listImportTargets — every active unit with
  *     icalImports[] entries (builder E adds that internal query here).
  *  2. For each (unit, import): fetch the .ics (10s timeout), parseIcs, then
@@ -227,35 +242,106 @@ export const syncAll = internalAction({
 
     for (const target of targets) {
       for (const imp of target.imports) {
-        // Per-feed isolation: one bad feed must never stop the rest.
-        try {
-          const icsText = await fetchIcsFeedText(imp.url);
-
-          const { events, warnings } = parseIcs(icsText);
-          const result = await ctx.runMutation(internal.icalImport.applyUnitImport, {
-            unitId: target.unitId,
-            label: imp.label,
-            events,
-          });
-
-          const warningSuffix = warnings.length > 0 ? `; ${warnings.length} warning(s)` : '';
-          await ctx.runMutation(internal.icalImport.updateImportStatus, {
-            unitId: target.unitId,
-            url: imp.url,
-            lastSyncedAt: Date.now(),
-            lastStatus: `ok: ${events.length} events (inserted ${result.inserted}, updated ${result.updated}, removed ${result.removed}, conflicts ${result.conflicts})${warningSuffix}`,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          await ctx.runMutation(internal.icalImport.updateImportStatus, {
-            unitId: target.unitId,
-            url: imp.url,
-            lastSyncedAt: Date.now(),
-            lastStatus: `error: ${message}`,
-          });
-        }
+        await syncOneFeed(ctx, { ...target, url: imp.url, label: imp.label, trigger: 'cron' });
       }
     }
+  },
+});
+
+async function recordRunAndAlert(ctx: ActionCtx, run: FunctionArgs<typeof internal.icalAlerts.recordRun>) {
+  const outbox = await ctx.runMutation(internal.icalAlerts.recordRun, run);
+  await deliverAlerts(ctx, run.propertyId, outbox);
+}
+
+type FeedSyncResult =
+  | { ok: true; inserted: number; updated: number; removed: number; conflicts: number }
+  | { ok: false; error: string };
+
+/**
+ * Fetch → parse → reconcile one feed, record its status on the unit, append a
+ * sync-history row and raise staff alerts. Never throws: one bad feed must not
+ * stop the rest.
+ */
+async function syncOneFeed(
+  ctx: ActionCtx,
+  feed: { unitId: Id<'units'>; propertyId: Id<'properties'>; url: string; label: string; trigger: 'manual' | 'cron' },
+): Promise<FeedSyncResult> {
+  try {
+    const icsText = await fetchIcsFeedText(feed.url);
+    const { events, warnings } = parseIcs(icsText);
+    const result = await ctx.runMutation(internal.icalImport.applyUnitImport, {
+      unitId: feed.unitId,
+      label: feed.label,
+      events,
+    });
+    const warningSuffix = warnings.length > 0 ? `; ${warnings.length} warning(s)` : '';
+    await ctx.runMutation(internal.icalImport.updateImportStatus, {
+      unitId: feed.unitId,
+      url: feed.url,
+      lastSyncedAt: Date.now(),
+      lastStatus: `ok: ${events.length} events (inserted ${result.inserted}, updated ${result.updated}, removed ${result.removed}, conflicts ${result.conflicts})${warningSuffix}`,
+    });
+    await recordRunAndAlert(ctx, {
+      propertyId: feed.propertyId,
+      unitId: feed.unitId,
+      label: feed.label,
+      trigger: feed.trigger,
+      ok: true,
+      inserted: result.inserted,
+      updated: result.updated,
+      removed: result.removed,
+      conflicts: result.conflicts,
+      newConflictBookingIds: result.newConflictBookingIds,
+    });
+    return { ok: true, inserted: result.inserted, updated: result.updated, removed: result.removed, conflicts: result.conflicts };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await ctx.runMutation(internal.icalImport.updateImportStatus, {
+      unitId: feed.unitId,
+      url: feed.url,
+      lastSyncedAt: Date.now(),
+      lastStatus: `error: ${message}`,
+    });
+    await recordRunAndAlert(ctx, {
+      propertyId: feed.propertyId,
+      unitId: feed.unitId,
+      label: feed.label,
+      trigger: feed.trigger,
+      ok: false,
+      error: message,
+      inserted: 0,
+      updated: 0,
+      removed: 0,
+      conflicts: 0,
+      newConflictBookingIds: [],
+    });
+    return { ok: false, error: message };
+  }
+}
+
+async function assertCanSync(ctx: ActionCtx, propertyId: Id<'properties'>) {
+  // Sync changes bookings and sellable inventory. Keep the classroom demo
+  // frictionless, but require property-scoped staff access everywhere else.
+  if (process.env.DEMO_MODE !== 'true') {
+    const access = await ctx.runQuery(api.staff.propertyContext, { propertyId });
+    if (!access.capabilities.includes('booking.write')) {
+      throw new ConvexError('CAPABILITY_DENIED');
+    }
+  }
+}
+
+/** "Đồng bộ ngay" for one unit + feed label. */
+export const syncFeedNow = action({
+  args: { propertyId: v.id('properties'), unitId: v.id('units'), label: v.string() },
+  handler: async (ctx, args): Promise<FeedSyncResult & { syncedAt: number }> => {
+    await assertCanSync(ctx, args.propertyId);
+    const targets: Array<{ unitId: Id<'units'>; propertyId: Id<'properties'>; imports: Array<{ url: string; label: string }> }> =
+      await ctx.runQuery(internal.icalImport.listImportTargets, {});
+    const target = targets.find((t) => t.unitId === args.unitId && t.propertyId === args.propertyId);
+    const feed = target?.imports.find((imp) => imp.label === args.label);
+    if (!target || !feed) throw new ConvexError({ code: 'FEED_NOT_CONFIGURED', message: 'Phòng này chưa có link iCal cho nguồn đã chọn.' });
+    const result = await syncOneFeed(ctx, { ...target, url: feed.url, label: feed.label, trigger: 'manual' });
+    return { ...result, syncedAt: Date.now() };
   },
 });
 
@@ -281,15 +367,7 @@ export const syncNow = action({
     conflicts: number;
     syncedAt: number;
   }> => {
-    // `syncNow` changes bookings and sellable inventory. Keep the classroom
-    // demo frictionless, but require the same property-scoped staff access as
-    // the rest of the command center everywhere else.
-    if (process.env.DEMO_MODE !== 'true') {
-      const access = await ctx.runQuery(api.staff.propertyContext, { propertyId: args.propertyId });
-      if (!access.capabilities.includes('booking.write')) {
-        throw new ConvexError('CAPABILITY_DENIED');
-      }
-    }
+    await assertCanSync(ctx, args.propertyId);
     const allTargets: Array<{
       unitId: Id<'units'>;
       propertyId: Id<'properties'>;
@@ -307,37 +385,16 @@ export const syncNow = action({
 
     for (const target of targets) {
       for (const imp of target.imports) {
-        try {
-          const icsText = await fetchIcsFeedText(imp.url);
-          const { events, warnings } = parseIcs(icsText);
-          const result = await ctx.runMutation(internal.icalImport.applyUnitImport, {
-            unitId: target.unitId,
-            label: imp.label,
-            events,
-          });
-          feedsSynced += 1;
-          inserted += result.inserted;
-          updated += result.updated;
-          removed += result.removed;
-          conflicts += result.conflicts;
-
-          const warningSuffix = warnings.length > 0 ? `; ${warnings.length} warning(s)` : '';
-          await ctx.runMutation(internal.icalImport.updateImportStatus, {
-            unitId: target.unitId,
-            url: imp.url,
-            lastSyncedAt: Date.now(),
-            lastStatus: `ok: ${events.length} events (inserted ${result.inserted}, updated ${result.updated}, removed ${result.removed}, conflicts ${result.conflicts})${warningSuffix}`,
-          });
-        } catch (error) {
+        const result = await syncOneFeed(ctx, { ...target, url: imp.url, label: imp.label, trigger: 'manual' });
+        if (!result.ok) {
           failedFeeds += 1;
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          await ctx.runMutation(internal.icalImport.updateImportStatus, {
-            unitId: target.unitId,
-            url: imp.url,
-            lastSyncedAt: Date.now(),
-            lastStatus: `error: ${message}`,
-          });
+          continue;
         }
+        feedsSynced += 1;
+        inserted += result.inserted;
+        updated += result.updated;
+        removed += result.removed;
+        conflicts += result.conflicts;
       }
     }
 
@@ -359,13 +416,17 @@ export const listImportTargets = internalQuery({
   args: {},
   handler: async (ctx) => {
     const units = await ctx.db.query('units').collect();
+    // 'upload:<source>' entries only record manual file imports; there is
+    // nothing to fetch for them.
     return units
-      .filter((u) => u.status !== 'offline' && u.icalImports.length > 0)
       .map((u) => ({
         unitId: u._id,
         propertyId: u.propertyId,
-        imports: u.icalImports.map((i) => ({ url: i.url, label: i.label })),
-      }));
+        status: u.status,
+        imports: u.icalImports.filter((i) => !i.url.startsWith('upload:')).map((i) => ({ url: i.url, label: i.label })),
+      }))
+      .filter((u) => u.status !== 'offline' && u.imports.length > 0)
+      .map(({ status: _status, ...target }) => target);
   },
 });
 
@@ -400,14 +461,16 @@ export const applyUnitImport = internalMutation({
       }),
     ),
   },
-  handler: async (ctx, args): Promise<{ inserted: number; updated: number; removed: number; conflicts: number }> => {
+  handler: async (ctx, args): Promise<{ inserted: number; updated: number; removed: number; conflicts: number; newConflictBookingIds: Id<'bookings'>[] }> => {
     // Defense in depth: listImportTargets only lists live units, but a unit
     // could vanish between the query and this mutation running. Nothing sane
     // to reconcile against without propertyId/unitTypeId — no-op, don't throw.
     const unit = await ctx.db.get(args.unitId);
     if (!unit) {
-      return { inserted: 0, updated: 0, removed: 0, conflicts: 0 };
+      return { inserted: 0, updated: 0, removed: 0, conflicts: 0, newConflictBookingIds: [] };
     }
+    // Bookings this run newly flagged as double-booked (drives staff alerts).
+    const newConflictBookingIds: Id<'bookings'>[] = [];
 
     const source = `ical:${args.label}`;
     let inserted = 0;
@@ -461,10 +524,13 @@ export const applyUnitImport = internalMutation({
       const existing = existingByUid.get(event.uid);
 
       if (!existing) {
-        const conflict = await insertExternalBooking(ctx, unit, source, event, now);
+        const { conflict, bookingId } = await insertExternalBooking(ctx, unit, source, event, now);
         inserted += 1;
         nightsChanged = true;
-        if (conflict) conflicts += 1;
+        if (conflict) {
+          conflicts += 1;
+          newConflictBookingIds.push(bookingId);
+        }
         continue;
       }
 
@@ -474,7 +540,10 @@ export const applyUnitImport = internalMutation({
         const conflict = await rewriteExternalNights(ctx, existing, event, now);
         updated += 1;
         nightsChanged = true;
-        if (conflict) conflicts += 1;
+        if (conflict) {
+          conflicts += 1;
+          if (!existing.syncConflict) newConflictBookingIds.push(existing._id);
+        }
       } else if (existing.syncConflict) {
         // Dates unchanged but still flagged — re-evaluate in case the
         // internal booking that caused the conflict has since freed up.
@@ -510,7 +579,7 @@ export const applyUnitImport = internalMutation({
       await markPropertyDirtyInline(ctx, unit.propertyId);
     }
 
-    return { inserted, updated, removed, conflicts };
+    return { inserted, updated, removed, conflicts, newConflictBookingIds };
   },
 });
 
@@ -566,7 +635,7 @@ async function insertExternalBooking(
   source: string,
   event: { uid: string; startDate: string; endDate: string; summary?: string },
   now: number,
-): Promise<boolean> {
+): Promise<{ conflict: boolean; bookingId: Id<'bookings'> }> {
   const unitId = unit._id;
   const blockedByInternal = await internalBlockedNights(ctx, unitId);
 
@@ -600,7 +669,7 @@ async function insertExternalBooking(
     await ctx.db.insert('unitNights', { unitId, date, bookingId, kind: 'external' });
   }
 
-  return conflict;
+  return { conflict, bookingId };
 }
 
 /** Rewrite an existing external booking's dates + unitNights under the same conflict rule. */

@@ -237,80 +237,93 @@ export const sendStaffAlert = internalAction({
     propertyId: v.id('properties'),
     subject: v.string(),
     body: v.string(),
+    // Explicit staff recipients; omitted = the property's own address.
+    to: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<void> => {
     const property = await ctx.runQuery(internal.email.getProperty, {
       propertyId: args.propertyId,
     });
     if (!property) return; // nothing to send against
-    const to = property.email;
-
-    const from = process.env.EMAIL_FROM ?? `${property.name} <no-reply@example.com>`;
-    if (await dispatchWithoutResend(ctx, {
-      propertyId: args.propertyId,
-      to,
-      from,
-      templateKey: 'staff_alert',
-      idempotencyKey: `staff:${args.propertyId}:${args.subject}:${args.body}`,
-      rendered: { subject: args.subject, text: args.body },
-    })) {
-      return;
+    const recipients = args.to?.length ? args.to : [property.email];
+    for (const to of recipients) {
+      await sendStaffAlertTo(ctx, { ...args, propertyName: property.name, to, keyed: args.to !== undefined });
     }
-    const apiKey = process.env.RESEND_API_KEY!;
-    const logId = await ctx.runMutation(internal.email.writeLog, {
-      propertyId: args.propertyId,
-      to,
-      templateKey: 'staff_alert',
-      subject: args.subject,
-      status: 'queued',
+  },
+});
+
+async function sendStaffAlertTo(
+  ctx: any,
+  args: { propertyId: Id<'properties'>; subject: string; body: string; propertyName: string; to: string; keyed: boolean },
+): Promise<void> {
+  const to = args.to;
+  const from = process.env.EMAIL_FROM ?? `${args.propertyName} <no-reply@example.com>`;
+  if (await dispatchWithoutResend(ctx, {
+    propertyId: args.propertyId,
+    to,
+    from,
+    templateKey: 'staff_alert',
+    idempotencyKey: args.keyed
+      ? `staff:${args.propertyId}:${to}:${args.subject}:${args.body}`
+      : `staff:${args.propertyId}:${args.subject}:${args.body}`,
+    rendered: { subject: args.subject, text: args.body },
+  })) {
+    return;
+  }
+  const apiKey = process.env.RESEND_API_KEY!;
+  const logId = await ctx.runMutation(internal.email.writeLog, {
+    propertyId: args.propertyId,
+    to,
+    templateKey: 'staff_alert',
+    subject: args.subject,
+    status: 'queued',
+  });
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: args.subject,
+        text: args.body,
+      }),
     });
-
-    let response: Response;
-    try {
-      response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from,
-          to,
-          subject: args.subject,
-          text: args.body,
-        }),
-      });
-    } catch (error) {
-      await ctx.runMutation(internal.email.updateLog, {
-        logId,
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Network error',
-      });
-      return;
-    }
-
-    if (response.ok) {
-      let providerMessageId: string | undefined;
-      try {
-        const body: unknown = await response.json();
-        providerMessageId =
-          body && typeof body === 'object' && 'id' in body && typeof (body as { id: unknown }).id === 'string'
-            ? (body as { id: string }).id
-            : undefined;
-      } catch {
-        providerMessageId = undefined;
-      }
-      await ctx.runMutation(internal.email.updateLog, { logId, status: 'sent', providerMessageId });
-      return;
-    }
-    const errorText = await safeText(response);
+  } catch (error) {
     await ctx.runMutation(internal.email.updateLog, {
       logId,
       status: 'failed',
-      error: `HTTP ${response.status}: ${errorText}`,
+      error: error instanceof Error ? error.message : 'Network error',
     });
-  },
-});
+    return;
+  }
+
+  if (response.ok) {
+    let providerMessageId: string | undefined;
+    try {
+      const body: unknown = await response.json();
+      providerMessageId =
+        body && typeof body === 'object' && 'id' in body && typeof (body as { id: unknown }).id === 'string'
+          ? (body as { id: string }).id
+          : undefined;
+    } catch {
+      providerMessageId = undefined;
+    }
+    await ctx.runMutation(internal.email.updateLog, { logId, status: 'sent', providerMessageId });
+    return;
+  }
+  const errorText = await safeText(response);
+  await ctx.runMutation(internal.email.updateLog, {
+    logId,
+    status: 'failed',
+    error: `HTTP ${response.status}: ${errorText}`,
+  });
+}
 
 /** One idempotent alert per booking message, sent to the opposite party. */
 export const sendBookingMessageAlert = internalAction({

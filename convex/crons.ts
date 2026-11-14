@@ -17,8 +17,13 @@ crons.interval(
 );
 
 // Pull external calendars (Airbnb etc.) into unitNights. No-op until a unit
-// has icalImports entries; per-feed failures are isolated inside syncAll.
-crons.interval('ical import sync', { minutes: 15 }, internal.icalImport.syncAll, {});
+// has icalImports entries; per-feed failures are isolated inside syncAll and
+// raise staff alerts via icalAlerts.recordRun.
+crons.interval('ical import sync', { minutes: 30 }, internal.icalImport.syncAll, {});
+
+// Demo-only: one round of simulated OTA churn per day (00:30 Asia/Ho_Chi_Minh).
+// No-op unless DEMO_MODE/ALLOW_OTA_SIMULATOR and the simulator is connected.
+crons.daily('ota simulator randomize', { hourUTC: 17, minuteUTC: 30 }, internal.otaSimulator.dailyRandomize, {});
 
 // Delete guest identity declarations after their explicit retention window.
 crons.daily('residence data retention', { hourUTC: 18, minuteUTC: 0 }, internal.residence.purgeExpired, {});

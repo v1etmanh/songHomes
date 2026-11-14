@@ -347,6 +347,17 @@ Don't promise otherwise anywhere — docs, UI copy, commit messages.
   bearer-authenticated bounded claims and acknowledgements; the local worker
   is a replaceable SMTP delivery adapter. Mailpit is loopback capture only,
   Resend remains optional, and `DEMO_MODE=true` always forces log-only mail.
+- 2026-11-14 (iCal sync hub + OTA simulator): iCal import runs every 30
+  minutes and on "Đồng bộ ngay" (per feed or all). Every feed attempt appends
+  an `icalSyncRuns` row; staff alerts (`icalSyncAlerts`) fire when a feed
+  starts failing (reminder after 6h), recovers, or newly flags a double
+  booking, and are emailed via `email.sendStaffAlert` (log-only under
+  DEMO_MODE; the in-app inbox shows the exact message). The Airbnb/
+  Booking.com-like platforms in `convex/otaSimulator.ts` + `/sim` are
+  demo-only (DEMO_MODE or ALLOW_OTA_SIMULATOR), clearly labelled as
+  simulations, never write `bookings` directly — changes reach OpenStays only
+  through the normal one-way iCal pull — and are excluded from production
+  artifacts. This is not OTA channel management.
 - 2026-09-01 (production downstream boundary): the generic operator release is
   built only with `VITE_OPENSTAYS_PROFILE=production` and a generated
   `convex-production/` functions directory. Its release artifacts must not

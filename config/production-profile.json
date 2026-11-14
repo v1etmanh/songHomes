@@ -7,13 +7,15 @@
     "signet",
     "treasury",
     "wavelength",
-    "/tour/operations"
+    "/tour/operations",
+    "otasimulator"
   ],
   "convexExcludedModules": [
     "consensus.ts",
     "consensusReceipts.ts",
     "demo.ts",
     "operationsHealth.ts",
+    "otaSimulator.ts",
     "publicMaintenance.ts",
     "rewardPolicy.ts",
     "seed.ts",
@@ -29,6 +31,7 @@
     "publicrewardclaims",
     "signet",
     "treasurysweeps",
-    "wavelength"
+    "wavelength",
+    "otasimulator"
   ]
 }
