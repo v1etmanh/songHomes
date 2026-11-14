@@ -35,7 +35,7 @@ export const run = internalMutation({
       .first();
     if (!song) await seedSongHomestay(ctx);
     else {
-      await ctx.db.patch(song._id, { allowPayAtProperty: true });
+      await ctx.db.patch(song._id, { allowPayAtProperty: true, requireGuestAccount: true, requireResidenceDeclaration: true });
       const songTypes = await ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', song._id)).collect();
       for (const unitType of songTypes) await ctx.db.patch(unitType._id, { photoUrls: SONG_HOMESTAY_PHOTO_URLS });
     }
@@ -66,6 +66,8 @@ export async function seedSongHomestay(ctx: MutationCtx): Promise<void> {
     checkOutTime: '12:00',
     active: true,
     allowPayAtProperty: true,
+    requireGuestAccount: true,
+    requireResidenceDeclaration: true,
   });
 
   const now = Date.now();

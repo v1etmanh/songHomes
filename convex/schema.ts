@@ -153,6 +153,11 @@ export default defineSchema({
     // gateway and settle at the property. Used by Sóng Homestay because a
     // real payment gateway is explicitly outside the classroom MVP scope.
     allowPayAtProperty: v.optional(v.boolean()),
+    // Guests must be signed in (Convex Auth users row) to book this property.
+    // The account grants no staff rights; code+email manage-booking still works.
+    requireGuestAccount: v.optional(v.boolean()),
+    // Check-in is refused until every adult has a tạm trú declaration.
+    requireResidenceDeclaration: v.optional(v.boolean()),
     // Channel manager (Channex) mapping — the Channex Property UUID this maps
     // to. Unset = not connected. Dormant until set + CHANNEX_API_KEY present.
     channexPropertyId: v.optional(v.string()),
@@ -334,6 +339,7 @@ export default defineSchema({
     unitId: v.id('units'),
     unitTypeId: v.id('unitTypes'),
     guestId: v.optional(v.id('guests')), // absent for external/blocked
+    userId: v.optional(v.id('users')), // signed-in guest account that booked (requireGuestAccount properties)
     ratePlanId: v.optional(v.id('ratePlans')),
     checkIn: v.string(), // 'YYYY-MM-DD'
     checkOut: v.string(), // exclusive
@@ -378,6 +384,7 @@ export default defineSchema({
     .index('by_status_holdExpires', ['status', 'holdExpiresAt'])
     .index('by_property_checkIn', ['propertyId', 'checkIn'])
     .index('by_guest', ['guestId'])
+    .index('by_user', ['userId'])
     .index('by_confirmationCode', ['confirmationCode'])
     .index('by_unit_externalUid', ['unitId', 'externalUid'])
     .index('by_channelBooking', ['channelBookingId']),
@@ -1203,6 +1210,7 @@ export default defineSchema({
     checkInDate: v.string(),
     checkOutDate: v.string(),
     reason: v.optional(v.string()),
+    stayAddress: v.optional(v.string()), // địa chỉ lưu trú, filled server-side from the unit/property
     status: v.union(v.literal('declared'), v.literal('verified'), v.literal('completed')),
     absenceStatus: v.optional(v.union(v.literal('away'), v.literal('returned'))),
     notes: v.optional(v.string()),
