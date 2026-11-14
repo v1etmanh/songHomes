@@ -1227,4 +1227,73 @@ export default defineSchema({
   })
     .index('by_property_createdAt', ['propertyId', 'createdAt'])
     .index('by_property_status', ['propertyId', 'status']),
+
+  // Simulated booking platforms (demo only; never real OTA connectivity). Each
+  // listing publishes a per-unit iCal feed that OpenStays pulls like any feed.
+  otaSimListings: defineTable({
+    propertyId: v.id('properties'),
+    unitId: v.id('units'),
+    platform: v.union(v.literal('airbnb'), v.literal('booking')),
+    title: v.string(),
+    feedToken: v.string(),
+    active: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index('by_property', ['propertyId'])
+    .index('by_feedToken', ['feedToken']),
+
+  otaSimReservations: defineTable({
+    propertyId: v.id('properties'),
+    listingId: v.id('otaSimListings'),
+    unitId: v.id('units'),
+    platform: v.union(v.literal('airbnb'), v.literal('booking')),
+    uid: v.string(),
+    checkIn: v.string(),
+    checkOut: v.string(),
+    guestLabel: v.string(),
+    status: v.union(v.literal('active'), v.literal('cancelled')),
+    origin: v.union(v.literal('manual'), v.literal('random'), v.literal('seed')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_listing_checkIn', ['listingId', 'checkIn'])
+    .index('by_property', ['propertyId']),
+
+  // One row per feed per iCal sync attempt (manual or cron).
+  icalSyncRuns: defineTable({
+    propertyId: v.id('properties'),
+    unitId: v.id('units'),
+    label: v.string(),
+    trigger: v.union(v.literal('manual'), v.literal('cron')),
+    ok: v.boolean(),
+    error: v.optional(v.string()),
+    inserted: v.number(),
+    updated: v.number(),
+    removed: v.number(),
+    conflicts: v.number(),
+    newConflicts: v.number(),
+    ts: v.number(),
+  }).index('by_property_ts', ['propertyId', 'ts']),
+
+  // Staff-facing iCal alerts; each one is also handed to email.sendStaffAlert.
+  icalSyncAlerts: defineTable({
+    propertyId: v.id('properties'),
+    kind: v.union(v.literal('sync_failed'), v.literal('sync_recovered'), v.literal('conflict')),
+    unitId: v.optional(v.id('units')),
+    label: v.optional(v.string()),
+    bookingId: v.optional(v.id('bookings')),
+    subject: v.string(),
+    body: v.string(),
+    recipients: v.array(v.string()),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  }).index('by_property_createdAt', ['propertyId', 'createdAt']),
+
+  icalSyncSettings: defineTable({
+    propertyId: v.id('properties'),
+    alertEmails: v.array(v.string()),
+    randomizerEnabled: v.boolean(),
+    conflictRate: v.number(), // 0..1
+    lastRandomizedOn: v.optional(v.string()),
+  }).index('by_property', ['propertyId']),
 });

@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
+import { renderIcs } from '../shared/ical';
 
 const EXPORTABLE = new Set(['confirmed', 'checked_in', 'blocked']);
 
@@ -23,32 +24,17 @@ export const exportFeed = internalQuery({
       .withIndex('by_unit_checkIn', (q) => q.eq('unitId', unit._id))
       .collect();
 
-    const events = bookings
-      .filter((b) => EXPORTABLE.has(b.status))
-      .map((b) =>
-        [
-          'BEGIN:VEVENT',
-          `UID:${b._id}@openstays`,
-          `DTSTART;VALUE=DATE:${b.checkIn.replaceAll('-', '')}`,
-          `DTEND;VALUE=DATE:${b.checkOut.replaceAll('-', '')}`, // exclusive — matches half-open semantics
-          'SUMMARY:Reserved',
-          `DTSTAMP:${toIcsTimestamp(b.updatedAt)}`,
-          'END:VEVENT',
-        ].join('\r\n'),
-      );
-
-    return [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//OpenStays//EN',
-      'CALSCALE:GREGORIAN',
-      ...events,
-      'END:VCALENDAR',
-      '',
-    ].join('\r\n');
+    return renderIcs({
+      prodId: '-//OpenStays//EN',
+      events: bookings
+        .filter((b) => EXPORTABLE.has(b.status))
+        .map((b) => ({
+          uid: `${b._id}@openstays`,
+          startDate: b.checkIn,
+          endDate: b.checkOut, // exclusive — matches half-open semantics
+          summary: 'Reserved',
+          stampMs: b.updatedAt,
+        })),
+    });
   },
 });
-
-function toIcsTimestamp(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-}

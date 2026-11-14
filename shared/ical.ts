@@ -184,3 +184,31 @@ function parseVEvent(lines: string[]): IcalEvent | null {
 
   return { uid, startDate, endDate, summary };
 }
+
+export type IcsOutputEvent = IcalEvent & { stampMs: number };
+
+/** Render all-day events as an RFC 5545 feed (CRLF, exclusive DTEND). */
+export function renderIcs(args: { prodId: string; calName?: string; events: IcsOutputEvent[] }): string {
+  const header = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:${args.prodId}`, 'CALSCALE:GREGORIAN'];
+  if (args.calName) header.push('METHOD:PUBLISH', `X-WR-CALNAME:${escapeText(args.calName)}`);
+  const events = args.events.map((event) =>
+    [
+      'BEGIN:VEVENT',
+      `UID:${event.uid}`,
+      `DTSTART;VALUE=DATE:${event.startDate.replaceAll('-', '')}`,
+      `DTEND;VALUE=DATE:${event.endDate.replaceAll('-', '')}`,
+      `SUMMARY:${escapeText(event.summary ?? 'Reserved')}`,
+      `DTSTAMP:${toIcsTimestamp(event.stampMs)}`,
+      'END:VEVENT',
+    ].join('\r\n'),
+  );
+  return [...header, ...events, 'END:VCALENDAR', ''].join('\r\n');
+}
+
+function escapeText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+
+function toIcsTimestamp(epochMs: number): string {
+  return new Date(epochMs).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
