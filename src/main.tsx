@@ -129,7 +129,6 @@ createRoot(rootElement).render(
               <Route path="calendar" element={<SongAdminPage section="calendar" />} />
               <Route path="ical" element={<SongAdminPage section="ical" />} />
               <Route path="services" element={<SongAdminPage section="services" />} />
-              <Route path="song-reports" element={<SongAdminPage section="reports" />} />
               <Route path="conflicts" element={<SongAdminPage section="conflicts" />} />
               <Route path="residence" element={<SongAdminPage section="residence" />} />
               <Route path="command" element={staffCommandElement} />
