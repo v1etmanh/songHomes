@@ -32,7 +32,7 @@ type Snapshot = {
   serviceUsage: Array<{ name: string; count: number; revenueCents: number }>;
 };
 type Catalog = { property: { currency: string }; unitTypes: Accommodation[]; units: Array<{ unitId: Id<'units'>; unitTypeId: Id<'unitTypes'>; name: string; status: string }>; addOns: Array<{ addOnId: Id<'addOns'>; name: string; priceCents: number; unitLabel: string; active: boolean }> };
-type Accommodation = { rates: Array<{id:Id<'ratePlans'>; name:string; cents:number}>; unitTypeId: Id<'unitTypes'>; name: string; slug: string; description: string; photoUrls: string[]; maxOccupancy: number|null; capacityKnown: boolean; address?: string; accommodationType?: string; bedrooms?: number; bathrooms?: number; areaSqm?: number; highlights: string[]; amenities: string[]; comingSoon: boolean };
+type Accommodation = { rates?: Array<{id:Id<'ratePlans'>; name:string; cents:number}>; unitTypeId: Id<'unitTypes'>; name: string; slug: string; description: string; photoUrls: string[]; maxOccupancy: number|null; capacityKnown: boolean; address?: string; accommodationType?: string; bedrooms?: number; bathrooms?: number; areaSqm?: number; highlights: string[]; amenities: string[]; comingSoon: boolean };
 
 const STATUS_LABELS: Record<string,string> = { hold:'Đang giữ chỗ', pending:'Chờ xác nhận', confirmed:'Đã xác nhận', checked_in:'Đang lưu trú', checked_out:'Đã hoàn thành', cancelled:'Đã hủy', external:'OTA / iCal', blocked:'Khóa phòng' };
 const SECTION_COPY: Record<SongAdminSection,[string,string]> = {
@@ -105,8 +105,269 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
 
 function ConflictTable({ rows }: { rows: BookingRow[] }) { return <section className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm"><div className="flex items-center gap-2 bg-red-50 px-5 py-4 text-red-800"><AlertTriangle className="h-5 w-5"/><h2 className="font-extrabold">Cảnh báo Double Booking ({rows.length})</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[42rem] text-left text-sm"><thead className="bg-red-50/50 text-xs text-slate-500"><tr><th className="p-3">Mã booking</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Nguồn</th><th className="p-3">Thời gian</th><th className="p-3">Trạng thái</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-red-100"><td className="p-3 font-bold">{row.confirmationCode}</td><td className="p-3">{row.unitName}</td><td className="p-3">{row.source}</td><td className="p-3">{row.checkIn} → {row.checkOut}</td><td className="p-3"><span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700">Chưa xử lý</span></td></tr>)}{!rows.length?<tr><td colSpan={5} className="p-8 text-center text-slate-400">Không có cảnh báo trùng lịch.</td></tr>:null}</tbody></table></div></section>; }
 
-function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) { const catalog=useQuery((api as any).songHomestay.managementCatalog,{propertyId}) as Catalog|undefined; if(!catalog)return <Spinner label="Đang tải 5 cơ sở…"/>; return <div className="grid gap-5 xl:grid-cols-2">{catalog.unitTypes.map((item)=><AccommodationEditor key={item.unitTypeId} propertyId={propertyId} item={item}/>)}</div>; }
-function AccommodationEditor({propertyId,item}:{propertyId:Id<'properties'>;item:Accommodation}) { const update=useMutation((api as any).songHomestay.updateAccommodation); const [draft,setDraft]=useState({...item,maxOccupancy:item.maxOccupancy?.toString()??'',highlights:item.highlights.join(', '),amenities:item.amenities.join(', '),photoUrls:item.photoUrls.join('\n')}); const [state,setState]=useState(''); async function save(){setState('Đang lưu…');try{await update({propertyId,unitTypeId:item.unitTypeId,name:draft.name,rates:draft.rates.filter(r=>r.cents!==item.rates.find(plan=>plan.id===r.id)?.cents).map(({id,cents})=>({id,cents})),address:draft.address??'',accommodationType:draft.accommodationType??'',description:draft.description,bedrooms:Number(draft.bedrooms??0),bathrooms:Number(draft.bathrooms??0),areaSqm:draft.areaSqm?Number(draft.areaSqm):undefined,maxOccupancy:draft.maxOccupancy?Number(draft.maxOccupancy):undefined,highlights:draft.highlights.split(','),amenities:draft.amenities.split(','),photoUrls:draft.photoUrls.split('\n'),comingSoon:draft.comingSoon});setState('Đã lưu');}catch(e){setState(extractErrorMessage(e));}} return <article className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm"><img src={item.photoUrls[0]??'/song-homestay/hero.webp'} alt={item.name} className="h-44 w-full object-cover"/><div className="grid gap-3 p-5 sm:grid-cols-2"><label className="sm:col-span-2"><span className="field-label">Tên cơ sở</span><input className="field-input" value={draft.name} onChange={(e)=>setDraft({...draft,name:e.target.value})}/></label><label><span className="field-label">Loại hình</span><input className="field-input" value={draft.accommodationType??''} onChange={(e)=>setDraft({...draft,accommodationType:e.target.value})}/></label>{draft.rates.length ? draft.rates.map((rate,i)=><label key={rate.id}><span className="field-label">Giá phòng / đêm (VND) · {rate.name}</span><input className="field-input" type="number" min="0" value={rate.cents/100} onChange={e=>setDraft({...draft,rates:draft.rates.map((r,j)=>i===j?{...r,cents:Math.round(Number(e.target.value)*100)}:r)})}/></label>) : <p>Chưa có bảng giá đang hoạt động.</p>}<label><span className="field-label">Địa chỉ</span><input className="field-input" value={draft.address??''} onChange={(e)=>setDraft({...draft,address:e.target.value})}/></label><label><span className="field-label">Phòng ngủ</span><input className="field-input" type="number" value={draft.bedrooms??0} onChange={(e)=>setDraft({...draft,bedrooms:Number(e.target.value)})}/></label><label><span className="field-label">Phòng tắm</span><input className="field-input" type="number" value={draft.bathrooms??0} onChange={(e)=>setDraft({...draft,bathrooms:Number(e.target.value)})}/></label><label><span className="field-label">Sức chứa (để trống nếu chưa rõ)</span><input className="field-input" type="number" value={draft.maxOccupancy} onChange={(e)=>setDraft({...draft,maxOccupancy:e.target.value})}/></label><label><span className="field-label">Diện tích m²</span><input className="field-input" type="number" value={draft.areaSqm??''} onChange={(e)=>setDraft({...draft,areaSqm:Number(e.target.value)||undefined})}/></label><label className="sm:col-span-2"><span className="field-label">Mô tả</span><textarea className="field-input min-h-24" value={draft.description} onChange={(e)=>setDraft({...draft,description:e.target.value})}/></label><label className="sm:col-span-2"><span className="field-label">Điểm nổi bật (phân cách bằng dấu phẩy)</span><input className="field-input" value={draft.highlights} onChange={(e)=>setDraft({...draft,highlights:e.target.value})}/></label><label className="sm:col-span-2"><span className="field-label">Tiện nghi</span><input className="field-input" value={draft.amenities} onChange={(e)=>setDraft({...draft,amenities:e.target.value})}/></label><label className="sm:col-span-2"><span className="field-label">URL ảnh (mỗi dòng một ảnh)</span><textarea className="field-input min-h-24" value={draft.photoUrls} onChange={(e)=>setDraft({...draft,photoUrls:e.target.value})}/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.comingSoon} onChange={(e)=>setDraft({...draft,comingSoon:e.target.checked})}/> Tạm dừng nhận booking</label><div className="flex items-center justify-end gap-3"><span className="text-xs text-slate-500">{state}</span><button type="button" className="btn-primary" onClick={()=>void save()}><Save className="h-4 w-4"/>Lưu</button></div></div></article>; }
+function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) {
+  const catalog = useQuery(api.songHomestay.managementCatalog, { propertyId });
+  const needsPublishedPrices = catalog?.unitTypes.some(
+    (item) => item.rates == null,
+  );
+  const published = useQuery(
+    api.properties.bySlug,
+    needsPublishedPrices ? { slug: 'song-homestay' } : 'skip',
+  );
+  if (!catalog) return <Spinner label="Đang tải danh sách cơ sở…" />;
+  return (
+    <div className="grid gap-5 xl:grid-cols-2">
+      {catalog.unitTypes.map((item) => (
+        <AccommodationEditor
+          key={item.unitTypeId}
+          propertyId={propertyId}
+          item={item}
+          publishedPrice={
+            published?.unitTypes.find(
+              (unit) => unit.unitTypeId === item.unitTypeId,
+            )?.fromPriceCents
+          }
+          currency={catalog.property.currency}
+        />
+      ))}
+    </div>
+  );
+}
+function AccommodationEditor({
+  propertyId,
+  item,
+  publishedPrice,
+  currency,
+}: {
+  publishedPrice?: number | null;
+  currency: string;
+  propertyId: Id<'properties'>;
+  item: Accommodation;
+}) {
+  const update = useMutation((api as any).songHomestay.updateAccommodation);
+  const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
+  const rates = item.rates ?? [];
+  const [draft, setDraft] = useState({
+    ...item,
+    maxOccupancy: item.maxOccupancy?.toString() ?? '',
+    highlights: item.highlights.join(', '),
+    amenities: item.amenities.join(', '),
+    photoUrls: item.photoUrls.join('\n'),
+  });
+  const [state, setState] = useState('');
+  async function save() {
+    setState('Đang lưu…');
+    try {
+      const changedRates = rates
+        .filter(
+          (rate) =>
+            priceEdits[rate.id] !== undefined &&
+            (priceEdits[rate.id] === '' ||
+              Number(priceEdits[rate.id]) * 100 !== rate.cents),
+        )
+        .map((rate) => {
+          const value = priceEdits[rate.id];
+          const cents = Math.round(Number(value) * 100);
+          if (!value.trim() || !Number.isSafeInteger(cents) || cents < 0)
+            throw new Error('Giá phòng không hợp lệ.');
+          return { id: rate.id, cents };
+        });
+      await update({
+        propertyId,
+        unitTypeId: item.unitTypeId,
+        name: draft.name,
+        ...(changedRates.length ? { rates: changedRates } : {}),
+        address: draft.address ?? '',
+        accommodationType: draft.accommodationType ?? '',
+        description: draft.description,
+        bedrooms: Number(draft.bedrooms ?? 0),
+        bathrooms: Number(draft.bathrooms ?? 0),
+        areaSqm: draft.areaSqm ? Number(draft.areaSqm) : undefined,
+        maxOccupancy: draft.maxOccupancy
+          ? Number(draft.maxOccupancy)
+          : undefined,
+        highlights: draft.highlights.split(','),
+        amenities: draft.amenities.split(','),
+        photoUrls: draft.photoUrls.split('\n'),
+        comingSoon: draft.comingSoon,
+      });
+      setState('Đã lưu');
+    } catch (e) {
+      setState(extractErrorMessage(e));
+    }
+  }
+  return (
+    <article className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+      <img
+        src={item.photoUrls[0] ?? '/song-homestay/hero.webp'}
+        alt={item.name}
+        className="h-44 w-full object-cover"
+      />
+      <div className="grid gap-3 p-5 sm:grid-cols-2">
+        <label className="sm:col-span-2">
+          <span className="field-label">Tên cơ sở</span>
+          <input
+            className="field-input"
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          />
+        </label>
+        <label>
+          <span className="field-label">Loại hình</span>
+          <input
+            className="field-input"
+            value={draft.accommodationType ?? ''}
+            onChange={(e) =>
+              setDraft({ ...draft, accommodationType: e.target.value })
+            }
+          />
+        </label>
+        {rates.length ? (
+          rates.map((rate) => (
+            <label key={rate.id}>
+              <span className="field-label">
+                Giá phòng / đêm (VND) · {rate.name}
+              </span>
+              <input
+                className="field-input"
+                type="number"
+                min="0"
+                value={priceEdits[rate.id] ?? rate.cents / 100}
+                onChange={(e) =>
+                  setPriceEdits({ ...priceEdits, [rate.id]: e.target.value })
+                }
+              />
+            </label>
+          ))
+        ) : item.rates == null ? (
+          <p>
+            <span className="field-label">Giá phòng / đêm</span>
+            {publishedPrice != null
+              ? formatMoney(publishedPrice, currency)
+              : 'Chưa có giá hiển thị'}
+            <small className="block text-slate-500">
+              Cần cập nhật Convex để chỉnh sửa giá.
+            </small>
+          </p>
+        ) : (
+          <p>Chưa có bảng giá đang hoạt động.</p>
+        )}
+        <label>
+          <span className="field-label">Địa chỉ</span>
+          <input
+            className="field-input"
+            value={draft.address ?? ''}
+            onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+          />
+        </label>
+        <label>
+          <span className="field-label">Phòng ngủ</span>
+          <input
+            className="field-input"
+            type="number"
+            value={draft.bedrooms ?? 0}
+            onChange={(e) =>
+              setDraft({ ...draft, bedrooms: Number(e.target.value) })
+            }
+          />
+        </label>
+        <label>
+          <span className="field-label">Phòng tắm</span>
+          <input
+            className="field-input"
+            type="number"
+            value={draft.bathrooms ?? 0}
+            onChange={(e) =>
+              setDraft({ ...draft, bathrooms: Number(e.target.value) })
+            }
+          />
+        </label>
+        <label>
+          <span className="field-label">Sức chứa (để trống nếu chưa rõ)</span>
+          <input
+            className="field-input"
+            type="number"
+            value={draft.maxOccupancy}
+            onChange={(e) =>
+              setDraft({ ...draft, maxOccupancy: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          <span className="field-label">Diện tích m²</span>
+          <input
+            className="field-input"
+            type="number"
+            value={draft.areaSqm ?? ''}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                areaSqm: Number(e.target.value) || undefined,
+              })
+            }
+          />
+        </label>
+        <label className="sm:col-span-2">
+          <span className="field-label">Mô tả</span>
+          <textarea
+            className="field-input min-h-24"
+            value={draft.description}
+            onChange={(e) =>
+              setDraft({ ...draft, description: e.target.value })
+            }
+          />
+        </label>
+        <label className="sm:col-span-2">
+          <span className="field-label">
+            Điểm nổi bật (phân cách bằng dấu phẩy)
+          </span>
+          <input
+            className="field-input"
+            value={draft.highlights}
+            onChange={(e) => setDraft({ ...draft, highlights: e.target.value })}
+          />
+        </label>
+        <label className="sm:col-span-2">
+          <span className="field-label">Tiện nghi</span>
+          <input
+            className="field-input"
+            value={draft.amenities}
+            onChange={(e) => setDraft({ ...draft, amenities: e.target.value })}
+          />
+        </label>
+        <label className="sm:col-span-2">
+          <span className="field-label">URL ảnh (mỗi dòng một ảnh)</span>
+          <textarea
+            className="field-input min-h-24"
+            value={draft.photoUrls}
+            onChange={(e) => setDraft({ ...draft, photoUrls: e.target.value })}
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={draft.comingSoon}
+            onChange={(e) =>
+              setDraft({ ...draft, comingSoon: e.target.checked })
+            }
+          />{' '}
+          Tạm dừng nhận booking
+        </label>
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-xs text-slate-500">{state}</span>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void save()}
+          >
+            <Save className="h-4 w-4" />
+            Lưu
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function Bookings({propertyId,snapshot}:{propertyId:Id<'properties'>;snapshot:Snapshot}) { const update=useMutation((api as any).songHomestay.updateBookingStatus); const [search,setSearch]=useState(''); const rows=snapshot.bookings.filter((row)=>`${row.confirmationCode} ${row.guestName} ${row.unitName}`.toLowerCase().includes(search.toLowerCase())); async function transition(row:BookingRow,status:'confirmed'|'checked_in'|'checked_out'|'cancelled'){try{await update({propertyId,bookingId:row.bookingId,status});}catch(error){window.alert(extractErrorMessage(error));}} return <div className="space-y-6"><details className="card p-4"><summary className="cursor-pointer font-bold text-blue-700">Tạo booking và khóa lịch</summary><SongHomestayManagementSection propertyId={propertyId} initialTab="booking" showTabs={false}/></details><section className="rounded-2xl border border-sky-100 bg-white shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><h2 className="font-extrabold text-[#10234a]">Danh sách booking</h2><input className="field-input max-w-sm" placeholder="Tìm mã, khách hoặc cơ sở…" value={search} onChange={(e)=>setSearch(e.target.value)}/></div><div className="overflow-x-auto"><table className="w-full min-w-[70rem] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã</th><th className="p-3">Khách</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Lưu trú</th><th className="p-3">Nguồn</th><th className="p-3">Tổng tiền</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-slate-100"><td className="p-3 font-bold">{row.confirmationCode}</td><td className="p-3"><strong>{row.guestName}</strong><br/><span className="text-xs text-slate-500">{row.guestPhone}</span></td><td className="p-3">{row.unitName}</td><td className="p-3">{row.checkIn}<br/>→ {row.checkOut}</td><td className="p-3">{row.source}</td><td className="p-3 font-semibold">{formatMoney(row.totalCents,snapshot.property.currency)}</td><td className="p-3"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{STATUS_LABELS[row.status]??row.status}</span>{row.residenceMissing?<span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Thiếu khai báo {row.residenceMissing}</span>:null}</td><td className="p-3"><div className="flex gap-2">{row.status==='pending'?<button className="text-xs font-bold text-emerald-700" onClick={()=>void transition(row,'confirmed')}>Xác nhận</button>:null}{row.status==='confirmed'?<button className="text-xs font-bold text-blue-700" onClick={()=>void transition(row,'checked_in')}>Check-in</button>:null}{row.status==='checked_in'?<button className="text-xs font-bold text-violet-700" onClick={()=>void transition(row,'checked_out')}>Hoàn thành</button>:null}{['pending','confirmed'].includes(row.status)?<button className="text-xs font-bold text-red-700" onClick={()=>void transition(row,'cancelled')}>Hủy</button>:null}</div></td></tr>)}</tbody></table></div></section></div>; }
 
