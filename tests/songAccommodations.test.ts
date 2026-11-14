@@ -4,6 +4,7 @@ import { getFunctionName } from 'convex/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SongAdminPage } from '../src/pages/SongAdminPage';
 import { formatMoney } from '../src/lib/money';
+import { MemoryRouter } from 'react-router-dom';
 
 const { query } = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('convex/react', async (load) => ({
@@ -27,7 +28,7 @@ function renderCatalog(rateFields: object) {
       case 'properties:bySlug': return { unitTypes: [{ unitTypeId: 'unit', fromPriceCents: 65000000 }] };
     }
   });
-  return renderToString(createElement(SongAdminPage, { section: 'accommodations' }));
+  return renderToString(createElement(MemoryRouter, null, createElement(SongAdminPage, { section: 'accommodations' })));
 }
 
 describe('Quản lý chỗ nghỉ', () => {

@@ -52,7 +52,7 @@ export function ServicesDesk({
           className={live ? 'btn-primary' : 'btn-secondary'}
           onClick={() => setLive(true)}
         >
-          Khách sử dụng dịch vụ (Live)
+          Khách đang sử dụng dịch vụ (Live)
         </button>
       </div>
       {!live ? (
@@ -62,40 +62,81 @@ export function ServicesDesk({
           showTabs={false}
         />
       ) : (
-        <div className="card p-4">
-          {error && <p role="alert">{error}</p>}
-          {data.rows.length === 0 && (
-            <p>Chưa có khách lưu trú sử dụng dịch vụ.</p>
+        <div className="card overflow-hidden p-0">
+          {error && (
+            <p role="alert" className="p-4 text-red-700">
+              {error}
+            </p>
           )}
-          {data.rows.map((row) => (
-            <div
-              key={row.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-b py-3"
-            >
-              <p>
-                <strong>{row.guest}</strong> · {row.code}
-                <br />
-                {row.service} × {row.quantity}
-              </p>
-              {row.completed ? (
-                'Đã hoàn thành'
-              ) : (
-                <button
-                  className="btn-secondary"
-                  onClick={async () => {
-                    try {
-                      await finish({ propertyId, lineId: row.id });
-                      setError('');
-                    } catch (e) {
-                      setError(extractErrorMessage(e));
-                    }
-                  }}
-                >
-                  Đánh dấu hoàn thành
-                </button>
-              )}
-            </div>
-          ))}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[56rem] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  {['Khách', 'Mã booking', 'Căn', 'Lưu trú', 'Dịch vụ', 'Số lượng', 'Thành tiền', 'Trạng thái', 'Thao tác'].map((h) => (
+                    <th key={h} className="p-3">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((row) => (
+                  <tr key={row.id} className="border-t border-slate-100 [&>td]:p-3">
+                    <td className="font-semibold">{row.guest}</td>
+                    <td>{row.code}</td>
+                    <td>{row.unit}</td>
+                    <td className="whitespace-nowrap">
+                      {row.checkIn} → {row.checkOut}
+                    </td>
+                    <td>{row.service}</td>
+                    <td>
+                      {row.quantity} {row.unitLabel}
+                    </td>
+                    <td className="font-semibold">
+                      {formatMoney(row.amountCents, currency)}
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          'whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ' +
+                          (row.completed
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-emerald-100 text-emerald-800')
+                        }
+                      >
+                        {row.completed ? 'Đã hoàn thành' : 'Đang phục vụ'}
+                      </span>
+                    </td>
+                    <td>
+                      {!row.completed && (
+                        <button
+                          type="button"
+                          className="whitespace-nowrap font-bold text-blue-700"
+                          onClick={async () => {
+                            try {
+                              await finish({ propertyId, lineId: row.id });
+                              setError('');
+                            } catch (e) {
+                              setError(extractErrorMessage(e));
+                            }
+                          }}
+                        >
+                          Đánh dấu hoàn thành
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {data.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="p-8 text-center text-slate-400">
+                      Chưa có khách lưu trú sử dụng dịch vụ.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

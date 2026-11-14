@@ -177,6 +177,23 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
     await desk.mutation(api.residence.saveAbsence,{...args,id:away._id,end:'2026-09-26T11:00'});
     await desk.mutation(api.residence.updateAbsenceStatus,{registrationId:away._id,absenceStatus:'returned'});
     expect(await t.run(ctx=>ctx.db.get(away._id))).toMatchObject({absenceStatus:'returned',notes:args.notes,checkOutDate:'2026-09-26T11:00'});
+
+    // A second adult must not silently inherit the booker's name.
+    const second={bookingId:guestData.bookingId,nationality:'Việt Nam',documentType:'cccd' as const,documentNumber:'079123456789',
+      dateOfBirth:'1996-03-01',gender:'Nữ',permanentAddress:'Huế'};
+    await expect(desk.mutation(api.residence.staffRegister,second)).rejects.toThrow(/họ tên/);
+    const secondId=await desk.mutation(api.residence.staffRegister,{...second,fullName:'  Trần   Thị B '});
+    expect(await t.run(ctx=>ctx.db.get(secondId))).toMatchObject({fullName:'Trần Thị B',recordCode:expect.stringMatching(/^TT-\d{4}-002$/)});
+
+    // Correcting a resident keeps the stored number when left blank and carries the identity to linked absences.
+    await desk.mutation(api.residence.staffUpdateRegistration,{registrationId:resident,fullName:'Nguyễn Văn A',nationality:'Việt Nam',
+      documentType:'passport',documentNumber:'',dateOfBirth:'1994-02-08',gender:'Nam',permanentAddress:'Đà Nẵng'});
+    expect(await t.run(ctx=>ctx.db.get(resident))).toMatchObject({fullName:'Nguyễn Văn A',documentNumber:'P1234567'});
+    expect(await t.run(ctx=>ctx.db.get(away._id))).toMatchObject({fullName:'Nguyễn Văn A'});
+    await expect(desk.mutation(api.residence.staffUpdateRegistration,{registrationId:secondId,fullName:'Trần Thị B',nationality:'Việt Nam',
+      documentType:'passport',documentNumber:'P1234567',dateOfBirth:'1996-03-01',gender:'Nữ',permanentAddress:'Huế'})).rejects.toThrow(/đã có bản ghi/);
+    await expect(t.mutation(api.residence.staffUpdateRegistration,{registrationId:resident,fullName:'X Y',nationality:'VN',
+      documentType:'passport',dateOfBirth:'1994-02-08',gender:'Nam',permanentAddress:'Đà Nẵng'})).rejects.toThrow();
   });
 
   it('purges only declarations whose privacy retention period has expired', async () => {

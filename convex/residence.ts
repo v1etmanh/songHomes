@@ -413,11 +413,12 @@ export const listForProperty = query({
         _id: row._id, bookingId: row.bookingId, fullName: row.fullName, nationality: row.nationality,
         documentType: row.documentType, documentNumber: args.exportFull ? row.documentNumber : '••••' + row.documentNumber.slice(-4),
         dateOfBirth: canReveal ? row.dateOfBirth : undefined, phone: canReveal ? row.phone : undefined,
-        permanentAddress: args.exportFull ? row.permanentAddress : undefined,
+        permanentAddress: args.exportFull || canReveal ? row.permanentAddress : undefined,
         canReveal, registrationType: row.registrationType, checkInDate: row.checkInDate, checkOutDate: row.checkOutDate,
         status: row.status, absenceStatus: row.absenceStatus, reason: row.reason, notes: row.notes,
         stayAddress: row.stayAddress, createdAt: row.createdAt, residentId: row.residentId,
-        recordCode: row.recordCode ?? (row.registrationType === 'tam_tru' ? 'TT-' : 'TV-') + new Date(row.createdAt).getUTCFullYear() + '-' + row._id,
+        recordCode: row.recordCode ?? legacyRecordCode(row),
+        gender: canReveal ? row.gender : undefined,
         confirmationCode: booking?.confirmationCode ?? 'UNKNOWN',
         unitName: booking ? (unitNameById.get(booking.unitId) ?? 'Phòng') : 'Phòng',
         bookingStatus: booking?.status ?? 'unknown',
@@ -529,7 +530,7 @@ async function nextCode(ctx: MutationCtx, propertyId: Id<'properties'>, kind: 'T
 }
 
 export const staffRegister = mutation({
-  args: {bookingId: v.id('bookings'), nationality: v.string(), documentType: v.union(v.literal('cccd'),v.literal('passport')),
+  args: {bookingId: v.id('bookings'), fullName: v.optional(v.string()), nationality: v.string(), documentType: v.union(v.literal('cccd'),v.literal('passport')),
     documentNumber: v.string(), dateOfBirth: v.string(), gender: v.string(), permanentAddress: v.string(), notes: v.optional(v.string())},
   handler: async (ctx,args) => {
     const booking = await ctx.db.get(args.bookingId);
@@ -541,8 +542,12 @@ export const staffRegister = mutation({
     const existing = await ctx.db.query('residenceRegistrations').withIndex('by_booking', q => q.eq('bookingId', args.bookingId)).collect();
     if (existing.some(r => r.registrationType === 'tam_tru' && r.documentNumber.toUpperCase() === number)) throw new ConvexError('Khách đã có bản ghi tạm trú.');
     const guest = booking.guestId && await ctx.db.get(booking.guestId);
+    const bookerName = guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA';
+    const fullName = args.fullName === undefined ? bookerName : cleanName(args.fullName);
+    // Each adult is declared under their own name; reusing the booker's name for a second adult is a data error.
+    if (args.fullName === undefined && existing.some(r => r.registrationType === 'tam_tru' && r.fullName === bookerName)) throw new ConvexError('Nhập họ tên của khách cần khai báo.');
     const now = Date.now();
-    return ctx.db.insert('residenceRegistrations', {...args, recordCode:await nextCode(ctx,booking.propertyId,'TT',now), documentNumber: number, fullName: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA',
+    return ctx.db.insert('residenceRegistrations', {...args, notes: args.notes === undefined ? undefined : sanitizeText(args.notes, 400), recordCode:await nextCode(ctx,booking.propertyId,'TT',now), documentNumber: number, fullName,
       propertyId: booking.propertyId, registrationType:'tam_tru', checkInDate:booking.checkIn, checkOutDate:booking.checkOut,
       stayAddress: await stayAddressFor(ctx, booking), status:'declared', submittedBy:'staff', createdAt:now, updatedAt:now, retentionUntil:now+RETENTION_MS});
   },
@@ -572,3 +577,41 @@ export const saveAbsence = mutation({
   },
 });
 
+
+function cleanName(value: string) {
+  const name = value.trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 100) throw new ConvexError('Họ tên phải từ 2 đến 100 ký tự.');
+  return name;
+}
+
+/** Display code for rows created before record codes existed: short and stable, never the raw document id. */
+function legacyRecordCode(row: Doc<'residenceRegistrations'>) {
+  const year = new Intl.DateTimeFormat('en', {year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}).format(row.createdAt);
+  return (row.registrationType === 'tam_tru' ? 'TT-' : 'TV-') + year + '-' + row._id.slice(-6).toUpperCase();
+}
+
+/** Staff correction of a tạm trú record. Linked tạm vắng rows copy the resident identity, so they follow. */
+export const staffUpdateRegistration = mutation({
+  args: {registrationId: v.id('residenceRegistrations'), fullName: v.string(), nationality: v.string(),
+    documentType: v.union(v.literal('cccd'),v.literal('passport')), documentNumber: v.optional(v.string()),
+    dateOfBirth: v.string(), gender: v.string(), permanentAddress: v.string(), notes: v.optional(v.string())},
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.registrationId);
+    if (!row || row.registrationType !== 'tam_tru') throw new ConvexError('REGISTRATION_NOT_FOUND');
+    await requireMutationPropertyCapability(ctx, row.propertyId, 'booking.write', 'residence.update');
+    const booking = await ctx.db.get(row.bookingId);
+    if (!booking) throw new ConvexError('BOOKING_UNAVAILABLE');
+    // A blank number keeps the stored one (the client only ever sees it masked).
+    const number = args.documentNumber?.trim() ? args.documentNumber.trim().toUpperCase() : row.documentNumber;
+    if (!DOCUMENT_PATTERNS[args.documentType].pattern.test(number)) throw new ConvexError(DOCUMENT_PATTERNS[args.documentType].message);
+    if (!isIsoDate(args.dateOfBirth) || args.dateOfBirth > booking.checkOut || !args.nationality.trim() || !args.gender.trim() || !args.permanentAddress.trim()) throw new ConvexError('Thông tin cá nhân chưa hợp lệ.');
+    const siblings = await ctx.db.query('residenceRegistrations').withIndex('by_booking', q => q.eq('bookingId', row.bookingId)).collect();
+    if (siblings.some(r => r._id !== row._id && r.registrationType === 'tam_tru' && r.documentNumber.toUpperCase() === number)) throw new ConvexError('Khách đã có bản ghi tạm trú.');
+    const identity = {fullName: cleanName(args.fullName), nationality: args.nationality.trim().slice(0, 80), documentType: args.documentType, documentNumber: number};
+    const now = Date.now();
+    await ctx.db.patch(row._id, {...identity, dateOfBirth: args.dateOfBirth, gender: sanitizeText(args.gender, 20),
+      permanentAddress: sanitizeText(args.permanentAddress, 300), notes: args.notes === undefined ? row.notes : sanitizeText(args.notes, 400), updatedAt: now});
+    for (const away of siblings) if (away.registrationType === 'tam_vang' && away.residentId === row._id) await ctx.db.patch(away._id, {...identity, updatedAt: now});
+    return { updated: true };
+  },
+});

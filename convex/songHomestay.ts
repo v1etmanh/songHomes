@@ -145,10 +145,12 @@ export const serviceOverview = query({
         const saleDate = day.format(line.soldAt);
         if (saleDate >= args.startDate && saleDate < args.endDate) revenue += line.quantity * line.unitPriceCents;
         if (booking.status !== 'checked_in') continue;
-        const guest = booking.guestId && await ctx.db.get(booking.guestId);
+        const [guest, unit] = await Promise.all([booking.guestId ? ctx.db.get(booking.guestId) : null, ctx.db.get(booking.unitId)]);
         if (!line.completedAt) customers.add(booking.guestId ?? booking._id);
         rows.push({id: line._id, guest: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA', code: booking.confirmationCode,
-          service: line.nameSnapshot, quantity: line.quantity, completed: Boolean(line.completedAt)});
+          unit: unit?.name ?? 'Chỗ nghỉ', checkIn: booking.checkIn, checkOut: booking.checkOut,
+          service: line.nameSnapshot, unitLabel: service.unitLabel,quantity: line.quantity, amountCents: line.quantity * line.unitPriceCents,
+          completed: Boolean(line.completedAt)});
       }
     }
     return {active: services.filter(s => s.active).length, total: services.length, customers: customers.size, revenue, rows};
