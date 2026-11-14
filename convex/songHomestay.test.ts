@@ -32,6 +32,21 @@ describe('Sóng Homestay admin management', () => {
   beforeEach(() => vi.stubEnv('DEMO_MODE', 'true'));
   afterEach(() => vi.unstubAllEnvs());
 
+  it('saves an accommodation that has no address yet, and still rejects an empty name', async () => {
+    const t = convexTest(schema, modules);
+    const fx = await seedSong(t);
+    const unitType = (fx.unitTypes as any[])[0];
+    const base = {
+      propertyId: fx.property._id, unitTypeId: unitType._id, name: 'Phòng đổi tên', address: '   ', accommodationType: 'Căn hộ',
+      description: 'Mô tả', bedrooms: 0, bathrooms: 0, highlights: [], amenities: [], photoUrls: [], comingSoon: false,
+    };
+    await t.mutation((api as any).songHomestay.updateAccommodation, base);
+    const saved = await t.run(async (ctx) => ctx.db.get(unitType._id));
+    expect(saved).toMatchObject({ name: 'Phòng đổi tên' });
+    expect((saved as any).address).toBeUndefined();
+    await expect(t.mutation((api as any).songHomestay.updateAccommodation, { ...base, name: ' ' })).rejects.toThrow(/INVALID_ACCOMMODATION/);
+  });
+
   it('creates a confirmed Zalo booking, blocks its nights, and rejects an overlap', async () => {
     const t = convexTest(schema, modules);
     const fx = await seedSong(t);

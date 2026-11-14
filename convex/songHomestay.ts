@@ -412,12 +412,12 @@ export const updateAccommodation = mutation({
     await requireConfigure(ctx, args.propertyId, 'song.accommodation.update');
     const row = await ctx.db.get(args.unitTypeId);
     if (!row || row.propertyId !== args.propertyId) throw new ConvexError('ACCOMMODATION_NOT_FOUND');
-    if (!args.name.trim() || !args.address.trim() || args.bedrooms < 0 || args.bathrooms < 0) {
+    if (!args.name.trim() || !(args.bedrooms >= 0) || !(args.bathrooms >= 0)) {
       throw new ConvexError('INVALID_ACCOMMODATION');
     }
     await ctx.db.patch(row._id, {
       name: args.name.trim(),
-      address: args.address.trim(),
+      address: args.address.trim() || undefined,
       accommodationType: args.accommodationType.trim(),
       description: args.description.trim(),
       bedrooms: args.bedrooms,
