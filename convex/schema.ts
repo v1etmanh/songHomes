@@ -1017,6 +1017,7 @@ export default defineSchema({
   bookingAddOns: defineTable({
     bookingId: v.id('bookings'),
     addOnId: v.id('addOns'),
+    completedAt: v.optional(v.number()),
     nameSnapshot: v.string(), // price/name frozen at sale time
     unitPriceCents: v.number(),
     quantity: v.number(),
@@ -1194,7 +1195,15 @@ export default defineSchema({
   }).index('by_key', ['key']),
 
   // Khai báo tạm trú / tạm vắng cho khách lưu trú (Sóng Homestay - DS05 Khách lưu trú).
+  residenceCounters: defineTable({
+    propertyId: v.id('properties'),
+    prefix: v.string(),
+    last: v.number(),
+  }).index('by_property_prefix', ['propertyId', 'prefix']),
+
   residenceRegistrations: defineTable({
+    recordCode: v.optional(v.string()),
+    residentId: v.optional(v.id('residenceRegistrations')),
     propertyId: v.id('properties'),
     bookingId: v.id('bookings'),
     fullName: v.string(),

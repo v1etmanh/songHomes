@@ -156,6 +156,27 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
       email,
     });
     expect(afterDelete.registrations).toHaveLength(0);
+
+    const userId = await t.run(async ctx => {
+      const id = await ctx.db.insert('users', {name:'Lễ tân'});
+      await ctx.db.insert('staffProfiles',{userId:id,name:'Lễ tân',role:'staff',active:true,createdAt:Date.now()});
+      return id;
+    });
+    const desk=t.withIdentity({subject:userId+'|session'});
+    const resident=await desk.mutation(api.residence.staffRegister,{bookingId:guestData.bookingId, nationality:'Việt Nam',
+      documentType:'passport',documentNumber:'P1234567',dateOfBirth:'1994-02-08',gender:'Nam',permanentAddress:'Đà Nẵng'});
+    const list=await desk.query(api.residence.listForProperty,{propertyId});
+    expect(list[0]).toMatchObject({canReveal:true, documentNumber:'••••4567', recordCode:expect.stringMatching(/^TT-\d{4}-001$/)});
+    expect(await desk.query(api.residence.fullDocument,{id:resident})).toBe('P1234567');
+    await expect(t.query(api.residence.fullDocument,{id:resident})).rejects.toThrow();
+    const args={residentId:resident,start:'2026-09-25T18:00',end:'2026-09-26T10:00',reason:'Thăm gia đình',notes:'Gọi khi về'};
+    await expect(desk.mutation(api.residence.saveAbsence,{...args,end:args.start})).rejects.toThrow();
+    await desk.mutation(api.residence.saveAbsence,args);
+    const [away]=await desk.query(api.residence.listForProperty,{propertyId});
+    expect(away).toMatchObject({absenceStatus:'away',residentId:resident,recordCode:expect.stringMatching(/^TV-\d{4}-001$/)});
+    await desk.mutation(api.residence.saveAbsence,{...args,id:away._id,end:'2026-09-26T11:00'});
+    await desk.mutation(api.residence.updateAbsenceStatus,{registrationId:away._id,absenceStatus:'returned'});
+    expect(await t.run(ctx=>ctx.db.get(away._id))).toMatchObject({absenceStatus:'returned',notes:args.notes,checkOutDate:'2026-09-26T11:00'});
   });
 
   it('purges only declarations whose privacy retention period has expired', async () => {

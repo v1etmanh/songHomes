@@ -51,7 +51,7 @@ describe('Sóng Homestay admin management', () => {
     const t = convexTest(schema, modules);
     const fx = await seedSong(t);
     const unit = (fx.units as any[])[0];
-    const result = await t.mutation((api as any).songHomestay.createManualBooking, {
+    const result = await t.mutation(api.songHomestay.createManualBooking, {
       propertyId: fx.property._id,
       unitId: unit._id,
       checkIn: '2026-12-10',
@@ -69,6 +69,24 @@ describe('Sóng Homestay admin management', () => {
       nights: await ctx.db.query('unitNights').withIndex('by_booking', (q) => q.eq('bookingId', result.bookingId)).collect(),
     }));
     expect(state.booking).toMatchObject({ status: 'confirmed', source: 'manual:zalo', nights: 3 });
+    const range={propertyId:fx.property._id,startDate:'2026-07-01',endDate:'2026-07-02'};
+    await t.run(ctx=>ctx.db.patch(result.bookingId,{createdAt:Date.parse('2026-06-30T17:00:00Z')}));
+    const dashboard=await t.query(api.songHomestay.adminSnapshot,range);
+    expect(dashboard.newBookings.map(b=>b.code)).toContain(state.booking?.confirmationCode);
+    expect(dashboard.bookings.map(b=>b.bookingId)).not.toContain(result.bookingId);
+    const serviceId=await t.run(ctx=>ctx.db.query('addOns').withIndex('by_property',q=>q.eq('propertyId',range.propertyId)).first());
+    const lineId=await t.run(async ctx=>{
+      await ctx.db.patch(result.bookingId,{status:'checked_in'});
+      return ctx.db.insert('bookingAddOns',{bookingId:result.bookingId,addOnId:serviceId!._id,nameSnapshot:'Giặt ủi',
+        quantity:2,unitPriceCents:50000,taxable:false,soldAt:Date.parse('2026-07-01T03:00:00Z')});
+    });
+    const live=await t.query(api.songHomestay.serviceOverview,range);
+    expect(live.rows).toContainEqual(expect.objectContaining({id:lineId,completed:false}));
+    expect(live.revenue).toBeGreaterThanOrEqual(100000);
+    await t.mutation(api.songHomestay.finishService,{propertyId:range.propertyId,lineId});
+    const completed=await t.query(api.songHomestay.serviceOverview,range);
+    expect(completed.customers).toBe(live.customers-1);
+    expect(completed.revenue).toBe(live.revenue);
     expect(state.nights.map((row) => row.date)).toEqual(['2026-12-10', '2026-12-11', '2026-12-12']);
 
     await expect(t.mutation((api as any).songHomestay.createManualBooking, {

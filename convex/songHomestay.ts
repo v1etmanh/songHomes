@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { enumerateNights, generateConfirmationCode } from '../shared/pricing';
+import { daysBetween, isIsoDate, enumerateNights, generateConfirmationCode } from '../shared/pricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { assertResidenceComplete, residenceProgress } from './residence';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
@@ -69,11 +69,12 @@ export const managementCatalog = query({
   args: { propertyId: v.id('properties') },
   handler: async (ctx, args) => {
     await requireRead(ctx, args.propertyId);
-    const [property, units, unitTypes, addOns] = await Promise.all([
+    const [property, units, unitTypes, addOns, plans] = await Promise.all([
       ctx.db.get(args.propertyId),
       ctx.db.query('units').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
       ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
       ctx.db.query('addOns').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
+      ctx.db.query('ratePlans').withIndex('by_property', q => q.eq('propertyId', args.propertyId)).collect(),
     ]);
     if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
     return {
@@ -84,6 +85,7 @@ export const managementCatalog = query({
           unitTypeId: row._id,
           name: row.name,
           slug: row.slug,
+          rates: plans.filter(plan => plan.unitTypeId === row._id && plan.active).map(plan => ({id: plan._id, name: plan.name, cents: plan.baseNightlyCents})),
           kind: row.kind,
           description: row.description,
           photoUrls: row.photoUrls,
@@ -121,6 +123,46 @@ export const managementCatalog = query({
           sortOrder: row.sortOrder,
         })),
     };
+  },
+});
+
+export const serviceOverview = query({
+  args: {propertyId: v.id('properties'), startDate: v.string(), endDate: v.string()},
+  handler: async (ctx, args) => {
+    await requireRead(ctx, args.propertyId);
+    const property = await ctx.db.get(args.propertyId);
+    if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
+    const day = new Intl.DateTimeFormat('en-CA', {timeZone: property.timezone, year:'numeric', month:'2-digit', day:'2-digit'});
+    const services = await ctx.db.query('addOns').withIndex('by_property', q => q.eq('propertyId', args.propertyId)).collect();
+    let revenue = 0;
+    const customers = new Set<string>();
+    const rows = [];
+    for (const service of services) {
+      const lines = await ctx.db.query('bookingAddOns').withIndex('by_addOn', q => q.eq('addOnId', service._id)).collect();
+      for (const line of lines) {
+        const booking = await ctx.db.get(line.bookingId);
+        if (!booking || booking.propertyId !== args.propertyId || !['confirmed','checked_in','checked_out'].includes(booking.status)) continue;
+        const saleDate = day.format(line.soldAt);
+        if (saleDate >= args.startDate && saleDate < args.endDate) revenue += line.quantity * line.unitPriceCents;
+        if (booking.status !== 'checked_in') continue;
+        const guest = booking.guestId && await ctx.db.get(booking.guestId);
+        if (!line.completedAt) customers.add(booking.guestId ?? booking._id);
+        rows.push({id: line._id, guest: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA', code: booking.confirmationCode,
+          service: line.nameSnapshot, quantity: line.quantity, completed: Boolean(line.completedAt)});
+      }
+    }
+    return {active: services.filter(s => s.active).length, total: services.length, customers: customers.size, revenue, rows};
+  },
+});
+
+export const finishService = mutation({
+  args: {propertyId: v.id('properties'), lineId: v.id('bookingAddOns')},
+  handler: async (ctx, args) => {
+    await requireWrite(ctx, args.propertyId, 'song.service.complete');
+    const line = await ctx.db.get(args.lineId);
+    const booking = line && await ctx.db.get(line.bookingId);
+    if (!line || booking?.propertyId !== args.propertyId || booking.status !== 'checked_in') throw new ConvexError('SERVICE_NOT_ACTIVE');
+    if (!line.completedAt) await ctx.db.patch(line._id, {completedAt: Date.now()});
   },
 });
 
@@ -397,6 +439,7 @@ export const updateAccommodation = mutation({
     propertyId: v.id('properties'),
     unitTypeId: v.id('unitTypes'),
     name: v.string(),
+    rates: v.optional(v.array(v.object({id: v.id('ratePlans'), cents: v.number()}))),
     address: v.string(),
     accommodationType: v.string(),
     description: v.string(),
@@ -416,6 +459,13 @@ export const updateAccommodation = mutation({
     if (!args.name.trim() || !(args.bedrooms >= 0) || !(args.bathrooms >= 0)) {
       throw new ConvexError('INVALID_ACCOMMODATION');
     }
+    for (const rate of args.rates ?? []) {
+      const plan = await ctx.db.get(rate.id);
+      if (!plan || !plan.active || plan.propertyId !== args.propertyId || plan.unitTypeId !== row._id ||
+          !Number.isSafeInteger(rate.cents) || rate.cents < 0) throw new ConvexError('INVALID_RATE');
+      await ctx.db.patch(plan._id, {baseNightlyCents: rate.cents});
+    }
+    if (args.rates?.length) await markPropertyDirtyInline(ctx, args.propertyId);
     await ctx.db.patch(row._id, {
       name: args.name.trim(),
       address: args.address.trim() || undefined,
@@ -474,6 +524,7 @@ export const adminSnapshot = query({
   args: { propertyId: v.id('properties'), startDate: v.string(), endDate: v.string() },
   handler: async (ctx, args) => {
     await requireRead(ctx, args.propertyId);
+    if (!isIsoDate(args.startDate) || !isIsoDate(args.endDate) || args.endDate<=args.startDate) throw new ConvexError('INVALID_DATE_RANGE');
     const [property, units, unitTypes, bookings, addOns] = await Promise.all([
       ctx.db.get(args.propertyId),
       ctx.db.query('units').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect(),
@@ -486,6 +537,11 @@ export const adminSnapshot = query({
     const typeById = new Map(unitTypes.map((row) => [String(row._id), row]));
     const active = bookings.filter((row) => row.status !== 'cancelled' && row.status !== 'expired');
     const inRange = active.filter((row) => row.checkIn < args.endDate && row.checkOut > args.startDate);
+    const dateFormat = new Intl.DateTimeFormat('en-CA', {timeZone: property.timezone, year:'numeric', month:'2-digit', day:'2-digit'});
+    const newBookings = active.filter(row => {
+      const day = dateFormat.format(row.createdAt);
+      return day >= args.startDate && day < args.endDate && row.status !== 'blocked';
+    }).map(row => ({date: dateFormat.format(row.createdAt), unitId: row.unitId, code: row.confirmationCode, status: row.status}));
     const bookingRows = [];
     let roomRevenueCents = 0;
     let serviceRevenueCents = 0;
@@ -500,7 +556,7 @@ export const adminSnapshot = query({
       const serviceCents = lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);
       const totalCents = booking.priceBreakdown?.totalCents ?? 0;
       const roomCents = Math.max(0, totalCents - serviceCents);
-      if (['confirmed', 'checked_in', 'checked_out'].includes(booking.status)) {
+      if (booking.checkIn >= args.startDate && ['confirmed', 'checked_in', 'checked_out'].includes(booking.status)) {
         roomRevenueCents += roomCents;
         serviceRevenueCents += serviceCents;
         const day = dailyRevenue[booking.checkIn] ?? { roomCents: 0, serviceCents: 0 };
@@ -521,26 +577,34 @@ export const adminSnapshot = query({
         unitTypeName: typeById.get(String(booking.unitTypeId))?.name ?? 'Chỗ nghỉ',
         checkIn: booking.checkIn, checkOut: booking.checkOut, adults: booking.adults, children: booking.children,
         status: booking.status, source: booking.source, totalCents, serviceCents,
-        syncConflict: booking.syncConflict ?? false, createdAt: booking.createdAt,
+        syncConflict: Boolean(booking.syncConflict && !booking.syncConflictAcknowledgedAt), createdAt: booking.createdAt,
         residenceMissing: ['pending', 'confirmed'].includes(booking.status) ? (await residenceProgress(ctx, booking)).missing : 0,
       });
     }
-    const periodNights = enumerateNights(args.startDate, args.endDate).length;
-    const activeUnits = units.filter((row) => row.status === 'active').length;
-    const occupiedNights = inRange.reduce((sum, booking) => {
-      const start = booking.checkIn < args.startDate ? args.startDate : booking.checkIn;
-      const end = booking.checkOut > args.endDate ? args.endDate : booking.checkOut;
-      return sum + enumerateNights(start, end).length;
-    }, 0);
+    const periodNights = daysBetween(args.startDate, args.endDate);
+    const activeUnits = units.filter(row => row.status === 'active');
+    const occupancyByUnit = activeUnits.map(unit => {
+      let nights = 0;
+      let lastEnd = args.startDate;
+      for (const stay of inRange.filter(b=>b.unitId===unit._id).sort((a,b)=>a.checkIn.localeCompare(b.checkIn))) {
+        const start = stay.checkIn > lastEnd ? stay.checkIn : lastEnd;
+        const end = stay.checkOut < args.endDate ? stay.checkOut : args.endDate;
+        if (end > start) { nights += daysBetween(start,end); lastEnd = end; }
+      }
+      return {unitId:unit._id,nights};
+    });
+    const occupiedNights = occupancyByUnit.reduce((sum,u)=>sum+u.nights,0);
     return {
+      occupancyByUnit,
       property: { name: property.name, currency: property.currency },
+      newBookings,
       kpis: {
-        totalBookings: inRange.length,
-        pendingBookings: inRange.filter((row) => row.status === 'pending').length,
+        totalBookings: newBookings.length,
+        pendingBookings: newBookings.filter((row) => row.status === 'pending').length,
         confirmedBookings: inRange.filter((row) => row.status === 'confirmed').length,
         currentGuests: inRange.filter((row) => row.status === 'checked_in').reduce((sum, row) => sum + row.adults + row.children, 0),
         roomRevenueCents, serviceRevenueCents, totalRevenueCents: roomRevenueCents + serviceRevenueCents,
-        occupancyPercent: activeUnits && periodNights ? Math.min(100, Math.round((occupiedNights / (activeUnits * periodNights)) * 100)) : 0,
+        occupancyPercent: activeUnits.length && periodNights ? Math.min(100, Math.round((occupiedNights / (activeUnits.length * periodNights)) * 100)) : 0,
         conflictCount: inRange.filter((row) => row.syncConflict && !row.syncConflictAcknowledgedAt).length,
       },
       bookings: bookingRows.sort((a, b) => a.checkIn.localeCompare(b.checkIn)),

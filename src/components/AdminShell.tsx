@@ -85,7 +85,7 @@ const SONG_NAV_ITEMS = [
   { to: '/admin/ical', label: 'Đồng bộ iCal', icon: UploadCloud },
   { to: '/admin/services', label: 'Dịch vụ bổ sung', icon: Sparkles },
   { to: '/admin/conflicts', label: 'Cảnh báo', icon: CircleAlert },
-  { to: '/admin/residence', label: 'Tạm trú / Tạm vắng', icon: ContactRound },
+  { to: '/admin/residence', label: 'Khai báo lưu trú', icon: ContactRound },
   { to: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ] as const;
 

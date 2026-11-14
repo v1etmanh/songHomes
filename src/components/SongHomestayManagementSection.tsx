@@ -150,14 +150,14 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
         </div>
       </div>}
 
-      <div className={`${showTabs ? 'mt-4 ' : ''}grid gap-2 sm:grid-cols-2 xl:grid-cols-6`} aria-label="KPI 30 ngày">
+      {showTabs && <div className={`${showTabs ? 'mt-4 ' : ''}grid gap-2 sm:grid-cols-2 xl:grid-cols-6`} aria-label="KPI 30 ngày">
         <Kpi label="Booking 30 ngày" value={kpis?.totalBookings ?? '…'} detail={`${kpis?.directBookings ?? 0} web · ${kpis?.manualBookings ?? 0} thủ công · ${kpis?.otaBookings ?? 0} OTA`} />
         <Kpi label="Tỷ lệ booking web" value={kpis ? `${kpis.directSharePercent}%` : '…'} detail="Mục tiêu O5: 10%" />
         <Kpi label="Web kèm dịch vụ" value={kpis ? `${kpis.serviceAttachPercent}%` : '…'} detail={`${kpis?.directWithServices ?? 0} booking · O6: 20%`} />
         <Kpi label="Xung đột đang mở" value={kpis?.activeConflicts ?? '…'} detail="Mục tiêu O1: 0" />
         <Kpi label="TG xử lý TB" value={kpis?.averageResolutionMinutes === null ? 'Chưa có' : kpis ? `${kpis.averageResolutionMinutes} phút` : '…'} detail="Mục tiêu O3: <15 phút" />
         <Kpi label="Đồng bộ iCal" value={kpis ? `${kpis.configuredFeeds - kpis.failedFeeds}/${kpis.configuredFeeds}` : '…'} detail={kpis?.lastSyncAt ? new Date(kpis.lastSyncAt).toLocaleString('vi-VN') : 'Chưa đồng bộ'} />
-      </div>
+      </div>}
 
       {feedback ? (
         <div className="mt-4" role="status">
@@ -227,5 +227,5 @@ function ServiceEditor({ service, currency, disabled, onSave }: { service: Catal
   const [unitLabel, setUnitLabel] = useState(service.unitLabel);
   const [taxable, setTaxable] = useState(service.taxable);
   const [active, setActive] = useState(service.active);
-  return <div className="rounded-xl border border-stone-200 p-4"><p className="text-xs font-semibold text-emerald-700">Hiện tại: {formatMoney(service.priceCents, currency)} / {service.unitLabel}</p><label className="mt-2 block"><span className="field-label">Tên dịch vụ</span><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></label><div className="mt-3 grid grid-cols-2 gap-3"><label><span className="field-label">Giá (VND)</span><input className="field-input" type="number" min={0} value={price} onChange={(event) => setPrice(event.target.value)} /></label><label><span className="field-label">Đơn vị</span><input className="field-input" value={unitLabel} onChange={(event) => setUnitLabel(event.target.value)} /></label></div><div className="mt-3 flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Đang bán</label><label><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} /> Tính thuế</label></div><button type="button" className="btn-secondary mt-3" disabled={disabled || !name.trim() || !unitLabel.trim()} onClick={() => void onSave({ name, priceCents: Math.round(Number(price) * 100), unitLabel, taxable, active })}><Save className="h-4 w-4" /> Lưu</button></div>;
+  return <div className="rounded-xl border border-stone-200 p-4"><p className="text-xs font-semibold text-emerald-700">{service.active ? 'Đang cung cấp' : 'Tạm ngưng'} · {formatMoney(service.priceCents, currency)} / {service.unitLabel}</p><label className="mt-2 block"><span className="field-label">Tên dịch vụ</span><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></label><div className="mt-3 grid grid-cols-2 gap-3"><label><span className="field-label">Giá (VND)</span><input className="field-input" type="number" min={0} value={price} onChange={(event) => setPrice(event.target.value)} /></label><label><span className="field-label">Đơn vị</span><input className="field-input" value={unitLabel} onChange={(event) => setUnitLabel(event.target.value)} /></label></div><div className="mt-3 flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Đang bán</label><label><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} /> Tính thuế</label></div><button type="button" className="btn-secondary mt-3" disabled={disabled || !name.trim() || !unitLabel.trim()} onClick={() => void onSave({ name, priceCents: Math.round(Number(price) * 100), unitLabel, taxable, active })}><Save className="h-4 w-4" /> Lưu</button></div>;
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { useAction, useConvex, useMutation, useQuery } from 'convex/react';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -103,6 +103,7 @@ type ResidenceRecord = {
   bookingStatus: string;
   fullName: string;
   documentType: 'cccd' | 'cmnd' | 'passport' | 'other';
+  canReveal: boolean;
   documentNumber: string;
   nationality: string;
   dateOfBirth?: string;
@@ -249,7 +250,8 @@ export function SongHomestayAdminPanel({ propertyId, onJumpToDate }: Props) {
     dashboard?.units.reduce((sum, u) => sum + u.icalImports.length, 0) ?? 0;
   const residenceCount = residenceList?.length ?? 0;
 
-  function exportResidenceCsv() {
+  const client = useConvex();
+  async function exportResidenceCsv() {
     if (!residenceList?.length) return;
     const safe = (value: unknown) => {
       let raw = String(value ?? '');
@@ -257,7 +259,8 @@ export function SongHomestayAdminPanel({ propertyId, onJumpToDate }: Props) {
       return `"${raw.replaceAll('"', '""')}"`;
     };
     const header = ['Mã booking', 'Căn', 'Họ tên', 'Loại giấy tờ', 'Số giấy tờ', 'Quốc tịch', 'Ngày sinh', 'SĐT', 'Địa chỉ', 'Loại đăng ký', 'Từ ngày', 'Đến ngày', 'Trạng thái'];
-    const rows = residenceList.map((row) => [row.confirmationCode, row.unitName, row.fullName, row.documentType, row.documentNumber, row.nationality, row.dateOfBirth, row.phone, row.permanentAddress, row.registrationType, row.checkInDate, row.checkOutDate, row.status]);
+    const records = await client.query(api.residence.listForProperty,{propertyId,exportFull:true});
+    const rows = records.map((row) => [row.confirmationCode, row.unitName, row.fullName, row.documentType, row.documentNumber, row.nationality, row.dateOfBirth, row.phone, row.permanentAddress, row.registrationType, row.checkInDate, row.checkOutDate, row.status]);
     const csv = `\uFEFF${[header, ...rows].map((row) => row.map(safe).join(',')).join('\r\n')}`;
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
@@ -728,7 +731,7 @@ export function SongHomestayAdminPanel({ propertyId, onJumpToDate }: Props) {
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-stone-600">Danh sách thông tin lưu trú do khách gửi. Chỉ sử dụng để hỗ trợ quy trình khai báo thủ công.</p>
-            <button type="button" className="btn-secondary py-1.5 text-xs" disabled={!residenceList?.length} onClick={exportResidenceCsv}><Download className="h-3.5 w-3.5" /> Xuất CSV khai báo</button>
+            <button type="button" className="btn-secondary py-1.5 text-xs" disabled={!residenceList?.[0]?.canReveal} onClick={()=>void exportResidenceCsv().catch(e=>setError(extractErrorMessage(e)))}><Download className="h-3.5 w-3.5" /> Xuất CSV khai báo</button>
           </div>
           {residenceList === undefined ? (
             <p className="text-xs text-stone-500">Đang tải danh sách khai báo tạm trú…</p>
