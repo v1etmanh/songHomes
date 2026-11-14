@@ -30,28 +30,29 @@ export function AppLayout() {
     return (
       <div className="flex min-h-screen flex-col bg-[#f4fafc]">
         <a href="#main-content" className="skip-link">Skip to main content</a>
-        <header className="sticky top-0 z-50 border-b border-sky-950/5 bg-[#f6fbfd]/95 shadow-[0_4px_24px_rgba(7,59,89,0.05)] backdrop-blur">
-          <div className="mx-auto flex h-[82px] max-w-6xl items-center justify-between gap-5 px-5 sm:px-8">
-            <Link to="/p/song-homestay" className="flex shrink-0 items-center gap-3 text-[#073b59]">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-[#0784aa] to-[#32b8bd] text-white shadow-lg shadow-cyan-900/15">
-                <Waves className="h-6 w-6" strokeWidth={2.25} aria-hidden="true" />
+        {/* Floating pill header: overlays the landing hero, sticks above content on the other Sóng pages. */}
+        <header className={`${isSongLanding ? 'fixed inset-x-0 top-0' : 'sticky top-0'} z-50 px-3 pt-3 sm:px-5 sm:pt-4`}>
+          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 rounded-full bg-white/90 pl-3 pr-2 shadow-[0_12px_40px_rgba(8,47,85,0.16)] ring-1 ring-[#0b2e4f]/5 backdrop-blur-md sm:pl-4">
+            <Link to="/p/song-homestay" className="flex shrink-0 items-center gap-2.5 text-[#0b2e4f]">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-[#1565a8] to-[#4a9ee0] text-white shadow-md shadow-blue-900/20">
+                <Waves className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
               </span>
-              <span className="font-sans text-lg font-extrabold tracking-tight sm:text-xl">Sóng Homestay</span>
+              <span className="hidden font-sans text-base font-extrabold tracking-tight sm:inline sm:text-lg">Sóng Homestay</span>
             </Link>
             <nav aria-label="Điều hướng chính" className="hidden items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-slate-600 lg:flex">
-              <Link to="/p/song-homestay" className={`rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795] ${isSongLanding && !location.hash ? 'bg-[#dff6fb] text-[#087795]' : ''}`}>Trang chủ</Link>
-              <Link to="/p/song-homestay/stays" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Chỗ nghỉ</Link>
-              <Link to="/p/song-homestay/experiences" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Trải nghiệm</Link>
-              <Link to="/p/song-homestay/about" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Giới thiệu</Link>
-              <Link to="/p/song-homestay/contact" className="rounded-full px-2 py-2.5 transition hover:bg-cyan-50 hover:text-[#087795]">Liên hệ</Link>
+              <Link to="/p/song-homestay" className={`rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8] ${isSongLanding && !location.hash ? 'bg-[#e3eefa] text-[#1565a8]' : ''}`}>Trang chủ</Link>
+              <Link to="/p/song-homestay/stays" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Chỗ nghỉ</Link>
+              <Link to="/p/song-homestay/experiences" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Khám phá Đà Nẵng</Link>
+              <Link to="/p/song-homestay/about" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Về Sóng</Link>
+              <Link to="/p/song-homestay/contact" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Liên hệ</Link>
             </nav>
-            <div className="flex items-center gap-2"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#087795] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#065f78]">Đặt phòng</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#0b7e9f]/25 px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#0b7e9f] hover:bg-[#087795] hover:text-white xl:inline">Quản trị</Link> : null}</div>
+            <div className="flex items-center gap-2 whitespace-nowrap"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#0b2e4f] px-4 py-2.5 text-sm font-bold text-white sm:px-5 transition hover:bg-[#1565a8]">Đặt phòng ngay</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#1565a8]/25 px-4 py-2.5 text-sm font-bold text-[#1565a8] transition hover:border-[#1565a8] hover:bg-[#1565a8] hover:text-white xl:inline">Quản trị</Link> : null}</div>
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className={isSongPublic ? (isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8') : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>
           <Outlet />
         </main>
-        <footer className="bg-[#05344d] px-5 py-14 text-sm text-white/70 sm:px-8">
+        <footer className="bg-[#082c4f] px-5 py-14 text-sm text-white/70 sm:px-8">
           <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[1.2fr_.8fr_.8fr]">
             <div>
               <Link to="/p/song-homestay" className="flex items-center gap-3 text-white">
@@ -63,9 +64,9 @@ export function AppLayout() {
             <div>
               <h2 className="font-sans font-bold text-white">Liên hệ</h2>
               <div className="mt-4 space-y-3">
-                <p className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> Đà Nẵng, Việt Nam</p>
-                <p className="flex gap-2"><Phone className="h-4 w-4 shrink-0 text-cyan-300" /> 0911.388.703</p>
-                <p className="flex gap-2"><Mail className="h-4 w-4 shrink-0 text-cyan-300" /> Songhomestay@gmail.com</p>
+                <p className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" /> Đà Nẵng, Việt Nam</p>
+                <p className="flex gap-2"><Phone className="h-4 w-4 shrink-0 text-sky-300" /> 0911.388.703</p>
+                <p className="flex gap-2"><Mail className="h-4 w-4 shrink-0 text-sky-300" /> Songhomestay@gmail.com</p>
               </div>
             </div>
             <div>
