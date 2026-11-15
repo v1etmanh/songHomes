@@ -1222,6 +1222,8 @@ export default defineSchema({
     stayAddress: v.optional(v.string()), // địa chỉ lưu trú, filled server-side from the unit/property
     status: v.union(v.literal('declared'), v.literal('verified'), v.literal('completed')),
     absenceStatus: v.optional(v.union(v.literal('away'), v.literal('returned'))),
+    // Long-stay guests: when staff filed the tạm trú registration with the authorities (absent = not yet).
+    temporaryResidenceDeclaredAt: v.optional(v.number()),
     notes: v.optional(v.string()),
     submittedBy: v.union(v.literal('guest'), v.literal('staff')),
     consentAt: v.optional(v.number()),

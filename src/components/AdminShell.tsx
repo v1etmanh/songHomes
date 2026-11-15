@@ -254,11 +254,6 @@ export function AdminShell() {
               </div>
             </details>
           ) : null}
-          {operationalStatus ? (
-            <span className={`rounded-full px-3 py-1 text-xs font-medium ${operationalStatus.channel.state === 'error' ? 'bg-red-100 text-red-800' : operationalStatus.channel.state === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-800'}`}>
-              {operationalStatus.channel.label}
-            </span>
-          ) : null}
           <details className="relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50">
               <span className="max-w-36 truncate">{gate.name}</span>

@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
+import type { Id } from './_generated/dataModel';
 
 const modules = import.meta.glob('./**/!(*.*.*)*.*s');
 
@@ -194,6 +195,30 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
       documentType:'passport',documentNumber:'P1234567',dateOfBirth:'1996-03-01',gender:'Nữ',permanentAddress:'Huế'})).rejects.toThrow(/đã có bản ghi/);
     await expect(t.mutation(api.residence.staffUpdateRegistration,{registrationId:resident,fullName:'X Y',nationality:'VN',
       documentType:'passport',dateOfBirth:'1994-02-08',gender:'Nam',permanentAddress:'Đà Nẵng'})).rejects.toThrow();
+
+    // Tạm trú applies only to long-stay bookings; the flag round-trips and is staff-only.
+    const mark=(declared:boolean)=>desk.mutation(api.residence.setTemporaryResidenceDeclared,{registrationId:resident,declared});
+    await expect(mark(true)).rejects.toThrow(/dài hạn/);
+    expect((await desk.query(api.residence.listForProperty,{propertyId})).find(r=>r._id===resident)).toMatchObject({longStay:false,temporaryResidenceDeclared:false});
+    await t.run(async ctx=>{
+      const booking=await ctx.db.get(guestData.bookingId as Id<'bookings'>);
+      await ctx.db.patch(booking!.unitTypeId,{name:'Nhà 2PN (Lưu trú dài hạn)',slug:'nha-dai-han-2pn'});
+    });
+    await expect(t.mutation(api.residence.setTemporaryResidenceDeclared,{registrationId:resident,declared:true})).rejects.toThrow();
+    await expect(desk.mutation(api.residence.setTemporaryResidenceDeclared,{registrationId:away._id,declared:true})).rejects.toThrow();
+    expect(await mark(true)).toEqual({updated:true});
+    expect(await mark(true)).toEqual({updated:false});
+    expect((await desk.query(api.residence.listForProperty,{propertyId})).find(r=>r._id===resident)).toMatchObject({longStay:true,temporaryResidenceDeclared:true});
+    expect(await mark(false)).toEqual({updated:true});
+    expect(await t.run(ctx=>ctx.db.get(resident))).not.toHaveProperty('temporaryResidenceDeclaredAt');
+  });
+
+  it('treats a stay of 30+ nights as long-stay regardless of the unit type', async () => {
+    const { isLongStay } = await import('./residence');
+    const plain={name:'Căn hộ 2PN',slug:'can-ho-2pn'};
+    expect(isLongStay(plain,'2026-11-01','2026-11-30')).toBe(false);
+    expect(isLongStay(plain,'2026-11-01','2026-12-01')).toBe(true);
+    expect(isLongStay({name:'Nhà Sóng (Ưu Đãi Lưu Trú Dài Hạn)',slug:'x'},'2026-11-01','2026-11-02')).toBe(true);
   });
 
   it('purges only declarations whose privacy retention period has expired', async () => {

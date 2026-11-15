@@ -1,5 +1,5 @@
 import { roleCan } from '../shared/operations';
-import { isIsoDate } from '../shared/pricing';
+import { daysBetween, isIsoDate } from '../shared/pricing';
 import { ConvexError, v } from 'convex/values';
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { internalMutation, mutation, query } from './_generated/server';
@@ -8,6 +8,14 @@ import type { Doc, Id } from './_generated/dataModel';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
 const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+/** Stays of this many nights or more need a tạm trú registration with the authorities. */
+export const LONG_STAY_NIGHTS = 30;
+
+/** Long stay = booked in a unit type marketed as dài hạn, or simply long enough. */
+export function isLongStay(unitType: Pick<Doc<'unitTypes'>, 'name' | 'slug'> | null | undefined, checkIn: string, checkOut: string) {
+  const marked = unitType ? /dai-han/.test(unitType.slug) || /dài hạn/i.test(unitType.name) : false;
+  return marked || (isIsoDate(checkIn.slice(0, 10)) && isIsoDate(checkOut.slice(0, 10)) && daysBetween(checkIn.slice(0, 10), checkOut.slice(0, 10)) >= LONG_STAY_NIGHTS);
+}
 const documentTypeArg = v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other'));
 const DOCUMENT_PATTERNS: Record<string, { pattern: RegExp; message: string }> = {
   cccd: { pattern: /^\d{12}$/, message: 'Số định danh cá nhân / CCCD gồm 12 chữ số.' },
@@ -405,6 +413,11 @@ export const listForProperty = query({
       .withIndex('by_property', (q) => q.eq('propertyId', propertyId))
       .collect();
     const unitNameById = new Map<Id<'units'>, string>(units.map((u) => [u._id, u.name]));
+    const unitTypes = await ctx.db
+      .query('unitTypes')
+      .withIndex('by_property', (q) => q.eq('propertyId', propertyId))
+      .collect();
+    const unitTypeById = new Map(unitTypes.map((t) => [t._id, t]));
 
     const result = [];
     for (const row of rows) {
@@ -422,6 +435,8 @@ export const listForProperty = query({
         confirmationCode: booking?.confirmationCode ?? 'UNKNOWN',
         unitName: booking ? (unitNameById.get(booking.unitId) ?? 'Phòng') : 'Phòng',
         bookingStatus: booking?.status ?? 'unknown',
+        longStay: booking ? isLongStay(unitTypeById.get(booking.unitTypeId), booking.checkIn, booking.checkOut) : false,
+        temporaryResidenceDeclared: Boolean(row.temporaryResidenceDeclaredAt),
       });
     }
     return result;
@@ -612,6 +627,23 @@ export const staffUpdateRegistration = mutation({
     await ctx.db.patch(row._id, {...identity, dateOfBirth: args.dateOfBirth, gender: sanitizeText(args.gender, 20),
       permanentAddress: sanitizeText(args.permanentAddress, 300), notes: args.notes === undefined ? row.notes : sanitizeText(args.notes, 400), updatedAt: now});
     for (const away of siblings) if (away.registrationType === 'tam_vang' && away.residentId === row._id) await ctx.db.patch(away._id, {...identity, updatedAt: now});
+    return { updated: true };
+  },
+});
+
+/** Staff marks whether a long-stay guest's tạm trú registration has been filed. Setting the same value twice is a no-op. */
+export const setTemporaryResidenceDeclared = mutation({
+  args: {registrationId: v.id('residenceRegistrations'), declared: v.boolean()},
+  handler: async (ctx, {registrationId, declared}) => {
+    const row = await ctx.db.get(registrationId);
+    if (!row || row.registrationType !== 'tam_tru') throw new ConvexError('REGISTRATION_NOT_FOUND');
+    await requireMutationPropertyCapability(ctx, row.propertyId, 'booking.write', 'residence.temporary.update');
+    const booking = await ctx.db.get(row.bookingId);
+    const unitType = booking && await ctx.db.get(booking.unitTypeId);
+    if (!booking || !isLongStay(unitType, booking.checkIn, booking.checkOut)) throw new ConvexError('Chỉ booking lưu trú dài hạn mới cần khai báo tạm trú.');
+    if (declared === Boolean(row.temporaryResidenceDeclaredAt)) return { updated: false };
+    const now = Date.now();
+    await ctx.db.patch(row._id, {temporaryResidenceDeclaredAt: declared ? now : undefined, updatedAt: now});
     return { updated: true };
   },
 });
