@@ -25,22 +25,26 @@ export function AddOnPicker({ addOns, selected, onChange, currency = 'CAD' }: Ad
         const quantity = selected[addOn.addOnId] ?? 0;
         const checked = quantity > 0;
         return (
-          <div key={addOn.addOnId} className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2">
-            <label className="flex items-center gap-2 text-sm text-stone-700">
+          <div key={addOn.addOnId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={(e) => onChange(addOn.addOnId, e.target.checked ? 1 : 0)}
-                className="h-4 w-4 rounded border-stone-300 text-emerald-700 focus:ring-emerald-600"
+                className="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#1565a8]"
               />
               <span>
                 {addOn.name}{' '}
-                <span className="text-stone-400">
-                  ({formatMoney(addOn.priceCents, currency)} / {addOn.unitLabel})
-                </span>
+                {addOn.priceCents === 0 ? (
+                  /miễn phí/i.test(addOn.name) ? null : <span className="font-semibold text-[#087795]">(Miễn phí)</span>
+                ) : (
+                  <span className="text-slate-400">
+                    ({formatMoney(addOn.priceCents, currency)} / {addOn.unitLabel})
+                  </span>
+                )}
               </span>
             </label>
-            {checked ? (
+            {checked && addOn.priceCents > 0 ? (
               <input
                 type="number"
                 min={1}
@@ -48,7 +52,7 @@ export function AddOnPicker({ addOns, selected, onChange, currency = 'CAD' }: Ad
                 value={quantity}
                 onChange={(e) => onChange(addOn.addOnId, Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
                 aria-label={`${addOn.name} quantity`}
-                className="w-16 rounded-md border border-stone-300 px-2 py-1 text-sm"
+                className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm"
               />
             ) : null}
           </div>

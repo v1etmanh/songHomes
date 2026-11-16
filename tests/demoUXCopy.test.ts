@@ -48,9 +48,10 @@ describe('judge-facing checkout copy', () => {
     expect(invoiceSource).toContain('const qrTitle = `${label} QR for ${amount} Signet test sats`;');
   });
 
-  it('states that marketing consent is recorded but no campaign is sent', () => {
+  it('keeps marketing consent optional without the English demo disclaimer (WEBSITE.pdf p.5)', () => {
     const source = readFileSync(new URL('../src/components/GuestForm.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('Consent is recorded with your reservation; this demo does not send marketing campaigns.');
+    expect(source).toContain('lựa chọn này không ảnh hưởng đến việc đặt phòng');
+    expect(source).not.toContain('Consent is recorded with your reservation');
   });
 
   it('suggests the working Consensus Commons promo code', () => {

@@ -75,7 +75,7 @@ export function AdminSettingsPage() {
   if (gate.status === 'awaiting_access') {
     return (
       <div className="mx-auto max-w-md space-y-4 text-center">
-        <ShieldAlert className="mx-auto h-8 w-8 text-amber-600" aria-hidden="true" />
+        <ShieldAlert className="mx-auto h-8 w-8 text-sky-600" aria-hidden="true" />
         <h1 className="font-display text-xl font-semibold text-stone-900">{vi ? 'Đang chờ cấp quyền' : 'Awaiting staff access'}</h1>
         <p className="text-sm text-stone-600">
           {vi
@@ -93,7 +93,7 @@ export function AdminSettingsPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 font-display text-2xl font-semibold text-stone-900">
-          <Settings className="h-6 w-6 text-emerald-700" aria-hidden="true" />
+          <Settings className="h-6 w-6 text-[#1565a8]" aria-hidden="true" />
           {vi ? 'Cài đặt' : 'Settings'}
         </h1>
         <Link to={vi ? '/admin/dashboard' : '/admin'} className="text-sm text-stone-500 hover:text-stone-800">
@@ -101,14 +101,14 @@ export function AdminSettingsPage() {
         </Link>
       </div>
 
-      <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900">
         <span className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
           {vi ? 'Đăng nhập với tên' : 'Signed in as'} {gate.name} ({gate.role})
         </span>
         <button
           type="button"
-          className="text-xs font-medium text-emerald-700 underline hover:text-emerald-900"
+          className="text-xs font-medium text-sky-800 underline hover:text-sky-950"
           onClick={() => void signOut()}
         >
           {vi ? 'Đăng xuất' : 'Sign out'}
@@ -123,21 +123,22 @@ export function AdminSettingsPage() {
           or add one via the Convex dashboard.
         </div>
       ) : (
-        properties.map((property) => <PropertyEditor key={property.propertyId} property={property} vi={vi} />)
+        // Sóng's settings show just its own property card (WEBSITE.pdf p.10); other deployments keep every section.
+        properties.filter((property) => !vi || property.propertyId === activeProperty.propertyId).map((property) => <PropertyEditor key={property.propertyId} property={property} vi={vi} />)
       )}
 
       {/* Any staff can VIEW channel status (getChannelConfig is staff-gated,
           not owner-gated); connection/mapping changes stay owner-only
           server-side. This also makes the section visible on the public demo,
           whose synthetic identity is role 'staff'. */}
-      <ChannelsSection />
+      {vi ? null : <ChannelsSection />}
 
       {/* Sign-in methods status + who-did-what audit trail. Any staff can view
           (same visibility as Channels); the queries are staff-gated server-side
           with the usual DEMO_MODE carve-out. */}
-      <SignInActivitySection />
+      {vi ? null : <SignInActivitySection />}
 
-      {gate.role === 'owner' ? <StaffSection /> : null}
+      {gate.role === 'owner' && !vi ? <StaffSection /> : null}
 
       {vi ? null : <section className="card p-6">
         <h2 className="font-display text-lg font-semibold text-stone-900">About OpenStays</h2>

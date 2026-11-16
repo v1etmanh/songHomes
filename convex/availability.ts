@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { query } from './_generated/server';
-import { addDays } from '../shared/pricing';
+import { addDays, daysBetween } from '../shared/pricing';
 import { requirePropertyCapability } from './staff';
 
 /** Public property-wide search used by the Sóng landing and listing pages. */
@@ -28,8 +28,12 @@ export const searchProperty = query({
       .withIndex('by_property', (q) => q.eq('propertyId', property._id))
       .collect();
     const available: typeof unitTypes[number]['_id'][] = [];
+    const nights = daysBetween(args.checkIn, args.checkOut);
     for (const unitType of unitTypes) {
       if (unitType.bookingMode !== 'nightly' || unitType.comingSoon || unitType.capacityKnown === false || unitType.maxOccupancy < args.guests) continue;
+      // A stay the rate plan cannot sell for this length (e.g. 30-night long-term rentals) is not a search hit.
+      const plan = await ctx.db.query('ratePlans').withIndex('by_unitType', (q) => q.eq('unitTypeId', unitType._id).eq('active', true)).first();
+      if (plan && (nights < plan.minStayNights || nights > plan.maxStayNights)) continue;
       const units = await ctx.db
         .query('units')
         .withIndex('by_type', (q) => q.eq('unitTypeId', unitType._id))

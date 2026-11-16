@@ -2,6 +2,7 @@ import { internalMutation } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { CONSENSUS_COMMONS_PHOTO_URLS } from '../shared/consensusCommonsExperience';
+import { upsertSongAddOns, upsertSongCatalog } from './songCatalog';
 
 const SONG_HOMESTAY_PHOTO_URLS = [
   '/song-homestay/apartment.webp',
@@ -36,8 +37,6 @@ export const run = internalMutation({
     if (!song) await seedSongHomestay(ctx);
     else {
       await ctx.db.patch(song._id, { allowPayAtProperty: true, requireGuestAccount: true, requireResidenceDeclaration: true });
-      const songTypes = await ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', song._id)).collect();
-      for (const unitType of songTypes) await ctx.db.patch(unitType._id, { photoUrls: SONG_HOMESTAY_PHOTO_URLS });
     }
     if (!pinewood) await seedPinewoodFlats(ctx);
     if (!commons) await seedConsensusCommons(ctx);
@@ -71,118 +70,14 @@ export async function seedSongHomestay(ctx: MutationCtx): Promise<void> {
   });
 
   const now = Date.now();
-  const stays = [
-    {
-      name: 'Sóng Garden House · Chế Lan Viên', slug: 'song-garden-house', kind: 'cabin' as const,
-      accommodationType: 'Nhà nguyên căn', address: 'Chế Lan Viên, Đà Nẵng', bedrooms: 2, bathrooms: 2,
-      maxOccupancy: 5, capacityKnown: true, price: 1_600_000_00,
-      description: 'Ngôi nhà nguyên căn yên tĩnh với khu vườn riêng, phù hợp cho cặp đôi và gia đình nhỏ.',
-      highlights: ['Vườn riêng', 'Không gian yên tĩnh', 'Bếp đầy đủ'],
-    },
-    {
-      name: 'Sóng Sea View Apartment · Mỹ Khê', slug: 'song-sea-view-apartment', kind: 'room' as const,
-      accommodationType: 'Căn hộ', address: 'Mỹ Khê, Đà Nẵng', bedrooms: 2, bathrooms: 2,
-      maxOccupancy: 5, capacityKnown: true, price: 1_200_000_00,
-      description: 'Căn hộ hai phòng ngủ có ban công riêng nhìn ra biển Mỹ Khê, thuận tiện cho kỳ nghỉ gia đình.',
-      highlights: ['Ban công hướng biển', 'Gần biển Mỹ Khê', 'Bếp riêng'],
-    },
-    {
-      name: 'Sóng Coastal Apartment · Mỹ Khê', slug: 'song-coastal-apartment', kind: 'room' as const,
-      accommodationType: 'Căn hộ', address: 'Mỹ Khê, Đà Nẵng', bedrooms: 2, bathrooms: 2,
-      maxOccupancy: 5, capacityKnown: true, price: 1_200_000_00,
-      description: 'Căn hộ ven biển thoáng sáng với ban công quầy bar, cách bãi biển Mỹ Khê vài phút.',
-      highlights: ['Ban công quầy bar', 'Gần biển', 'Không gian thoáng'],
-    },
-    {
-      name: 'Sóng Pool Villa · K65 Tô Hiến Thành', slug: 'song-pool-villa', kind: 'cabin' as const,
-      accommodationType: 'Biệt thự', address: 'K65 Tô Hiến Thành, Đà Nẵng', bedrooms: 4, bathrooms: 4,
-      maxOccupancy: 8, capacityKnown: true, price: 3_500_000_00,
-      description: 'Biệt thự bốn phòng ngủ dành cho nhóm bạn và gia đình đông, có hồ bơi trong nhà và sân thượng riêng.',
-      highlights: ['Hồ bơi trong nhà', 'Sân thượng riêng', 'Phù hợp nhóm đông'],
-    },
-    {
-      name: 'Sóng Rooftop House · An Thượng 17', slug: 'song-rooftop-house', kind: 'cabin' as const,
-      accommodationType: 'Nhà nguyên căn', address: 'An Thượng 17, Đà Nẵng', bedrooms: 6, bathrooms: 6,
-      maxOccupancy: 0, capacityKnown: false, price: 5_200_000_00,
-      description: 'Nhà nguyên căn sáu phòng ngủ với sân thượng BBQ và hướng nhìn núi Sơn Trà.',
-      highlights: ['Sân thượng BBQ', 'Hướng núi Sơn Trà', 'Không gian cho đoàn'],
-    },
-  ];
-
-  for (const [index, stay] of stays.entries()) {
-    const photoUrls = [
-      SONG_HOMESTAY_PHOTO_URLS[index % SONG_HOMESTAY_PHOTO_URLS.length],
-      ...SONG_HOMESTAY_PHOTO_URLS.filter((_, photoIndex) => photoIndex !== index % SONG_HOMESTAY_PHOTO_URLS.length),
-    ];
-    const unitTypeId = await ctx.db.insert('unitTypes', {
-      propertyId,
-      name: stay.name,
-      slug: stay.slug,
-      kind: stay.kind,
-      bookingMode: 'nightly',
-      description: stay.description,
-      photoUrls,
-      maxOccupancy: stay.maxOccupancy,
-      amenities: ['Wi-Fi', 'Điều hòa', 'Bếp', ...stay.highlights],
-      address: stay.address,
-      accommodationType: stay.accommodationType,
-      bedrooms: stay.bedrooms,
-      bathrooms: stay.bathrooms,
-      capacityKnown: stay.capacityKnown,
-      highlights: stay.highlights,
-      policies: {
-        checkIn: 'Từ 14:00',
-        checkOut: 'Trước 12:00',
-        children: 'Trẻ em được chào đón; cần khai báo đúng số lượng khách.',
-        pets: 'Vui lòng liên hệ trước nếu đi cùng vật nuôi.',
-        cancellation: 'Chính sách hủy được xác nhận cùng yêu cầu đặt phòng.',
-      },
-      comingSoon: false,
-      sortOrder: index + 1,
-    });
-    await ctx.db.insert('units', {
-      propertyId,
-      unitTypeId,
-      name: stay.name,
-      slug: stay.slug,
-      status: 'active',
-      icalExportToken: crypto.randomUUID().replaceAll('-', ''),
-      icalImports: [],
-      sortOrder: index + 1,
-    });
-    await ctx.db.insert('ratePlans', {
-      propertyId,
-      unitTypeId,
-      name: 'Giá tiêu chuẩn',
-      active: true,
-      currency: 'VND',
-      baseNightlyCents: stay.price,
-      seasons: [],
-      minStayNights: 1,
-      maxStayNights: 30,
-      minLeadTimeHours: 0,
-      maxAdvanceDays: 365,
-      prepBufferNights: 0,
-      depositPolicy: { type: 'percent', value: 30 },
-      cancellationPolicy: [{ daysBefore: 7, refundPercent: 100 }, { daysBefore: 0, refundPercent: 0 }],
-    });
-  }
+  await upsertSongCatalog(ctx, propertyId);
 
   await ctx.db.insert('promoCodes', {
     propertyId, code: 'SONGDANANG10', normalizedCode: 'SONGDANANG10', kind: 'percent', valueBps: 1_000,
     description: 'Ưu đãi đặt phòng trực tiếp tại website Sóng Homestay — Giảm 10%', oncePerGuest: false,
     appliesToUnitTypes: [], active: true, redemptionCount: 0, createdAt: now,
   });
-  const services = [
-    { name: 'Thuê xe máy', priceCents: 150_000_00, unitLabel: 'ngày' },
-    { name: 'Đưa đón sân bay', priceCents: 200_000_00, unitLabel: 'lượt' },
-    { name: 'Vé tham quan Bà Nà Hills', priceCents: 950_000_00, unitLabel: 'vé' },
-  ];
-  for (const [index, service] of services.entries()) {
-    await ctx.db.insert('addOns', {
-      propertyId, ...service, taxable: false, appliesTo: [], active: true, sortOrder: index + 1,
-    });
-  }
+  await upsertSongAddOns(ctx, propertyId);
 }
 
 /** Retained only as a migration reference for pre-v2 local demo data. */

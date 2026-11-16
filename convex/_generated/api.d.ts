@@ -64,6 +64,7 @@ import type * as refunds from "../refunds.js";
 import type * as residence from "../residence.js";
 import type * as rewardPolicy from "../rewardPolicy.js";
 import type * as seed from "../seed.js";
+import type * as songCatalog from "../songCatalog.js";
 import type * as songHomestay from "../songHomestay.js";
 import type * as songReset from "../songReset.js";
 import type * as songSampleData from "../songSampleData.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   residence: typeof residence;
   rewardPolicy: typeof rewardPolicy;
   seed: typeof seed;
+  songCatalog: typeof songCatalog;
   songHomestay: typeof songHomestay;
   songReset: typeof songReset;
   songSampleData: typeof songSampleData;

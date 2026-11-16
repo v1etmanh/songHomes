@@ -99,6 +99,8 @@ export const managementCatalog = query({
           highlights: row.highlights ?? [],
           amenities: row.amenities,
           comingSoon: row.comingSoon,
+          longStay: row.longStay === true,
+          monthlyPriceCents: row.monthlyPriceCents ?? null,
         })),
       units: units
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -453,6 +455,8 @@ export const updateAccommodation = mutation({
     amenities: v.array(v.string()),
     photoUrls: v.array(v.string()),
     comingSoon: v.boolean(),
+    longStay: v.optional(v.boolean()),
+    monthlyPriceCents: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireConfigure(ctx, args.propertyId, 'song.accommodation.update');
@@ -482,8 +486,107 @@ export const updateAccommodation = mutation({
       amenities: args.amenities.map((item) => item.trim()).filter(Boolean),
       photoUrls: args.photoUrls.map((item) => item.trim()).filter(Boolean),
       comingSoon: args.comingSoon,
+      ...(args.longStay !== undefined ? { longStay: args.longStay } : {}),
+      ...(args.monthlyPriceCents !== undefined ? { monthlyPriceCents: validMoney(args.monthlyPriceCents) || undefined } : {}),
     });
+    // A stay sold as one whole unit carries the same name everywhere (calendar, occupancy, residence lists).
+    const units = await ctx.db.query('units').withIndex('by_type', (q) => q.eq('unitTypeId', row._id)).collect();
+    if (units.length === 1 && units[0].name !== args.name.trim()) await ctx.db.patch(units[0]._id, { name: args.name.trim() });
     return { updated: true };
+  },
+});
+
+function validMoney(cents: number) {
+  if (!Number.isSafeInteger(cents) || cents < 0) throw new ConvexError('INVALID_RATE');
+  return cents;
+}
+
+const slugify = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+
+/**
+ * Add a new stay: one unit type, its single bookable unit and a standard rate plan.
+ * Idempotent per name: a retried request for an existing slug returns that stay instead of a duplicate.
+ */
+export const createAccommodation = mutation({
+  args: {
+    propertyId: v.id('properties'),
+    name: v.string(),
+    accommodationType: v.string(),
+    address: v.string(),
+    description: v.string(),
+    bedrooms: v.number(),
+    bathrooms: v.number(),
+    maxOccupancy: v.number(),
+    areaSqm: v.optional(v.number()),
+    nightlyCents: v.number(),
+    longStay: v.boolean(),
+    monthlyPriceCents: v.optional(v.number()),
+    photoUrls: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConfigure(ctx, args.propertyId, 'song.accommodation.create');
+    const property = await ctx.db.get(args.propertyId);
+    if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
+    const name = args.name.trim();
+    const slug = slugify(name);
+    if (!name || !slug || !(args.bedrooms >= 0) || !(args.bathrooms >= 0) || !Number.isInteger(args.maxOccupancy) || args.maxOccupancy < 1) {
+      throw new ConvexError('INVALID_ACCOMMODATION');
+    }
+    const nightlyCents = validMoney(args.nightlyCents);
+    const existing = await ctx.db.query('unitTypes').withIndex('by_property_slug', (q) => q.eq('propertyId', args.propertyId).eq('slug', slug)).first();
+    if (existing) return { unitTypeId: existing._id, created: false };
+    const siblings = await ctx.db.query('unitTypes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect();
+    const sortOrder = Math.max(0, ...siblings.filter((t) => t.sortOrder < 100).map((t) => t.sortOrder)) + 1;
+    const unitTypeId = await ctx.db.insert('unitTypes', {
+      propertyId: args.propertyId, name, slug, kind: 'cabin', bookingMode: 'nightly',
+      description: args.description.trim(), photoUrls: args.photoUrls.map((u) => u.trim()).filter(Boolean),
+      maxOccupancy: args.maxOccupancy, capacityKnown: true, amenities: [], highlights: [],
+      address: args.address.trim() || undefined, accommodationType: args.accommodationType.trim() || 'Nhà nguyên căn',
+      bedrooms: args.bedrooms, bathrooms: args.bathrooms, areaSqm: args.areaSqm,
+      longStay: args.longStay, monthlyPriceCents: args.monthlyPriceCents ? validMoney(args.monthlyPriceCents) : undefined,
+      comingSoon: false, sortOrder,
+    });
+    const unitSiblings = await ctx.db.query('units').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).collect();
+    await ctx.db.insert('units', {
+      propertyId: args.propertyId, unitTypeId, name, slug, status: 'active',
+      icalExportToken: crypto.randomUUID().replaceAll('-', ''), icalImports: [],
+      sortOrder: Math.max(0, ...unitSiblings.map((u) => u.sortOrder)) + 1,
+    });
+    await ctx.db.insert('ratePlans', {
+      propertyId: args.propertyId, unitTypeId, name: args.longStay ? 'Giá thuê dài hạn' : 'Giá tiêu chuẩn', active: true,
+      currency: property.currency, baseNightlyCents: nightlyCents, seasons: [],
+      minStayNights: args.longStay ? 30 : 1, maxStayNights: args.longStay ? 365 : 30,
+      minLeadTimeHours: 0, maxAdvanceDays: 365, prepBufferNights: 0,
+      depositPolicy: { type: 'percent', value: 30 },
+      cancellationPolicy: [{ daysBefore: 7, refundPercent: 100 }, { daysBefore: 0, refundPercent: 0 }],
+    });
+    return { unitTypeId, created: true };
+  },
+});
+
+/** Short-lived Convex storage upload URL for accommodation photos. */
+export const generatePhotoUploadUrl = mutation({
+  args: { propertyId: v.id('properties') },
+  handler: async (ctx, args) => {
+    await requireConfigure(ctx, args.propertyId, 'song.accommodation.photo');
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Resolve an uploaded photo to the public URL stored in unitTypes.photoUrls. */
+export const photoUrl = mutation({
+  args: { propertyId: v.id('properties'), storageId: v.id('_storage') },
+  handler: async (ctx, args) => {
+    await requireConfigure(ctx, args.propertyId, 'song.accommodation.photo');
+    const meta = await ctx.db.system.get(args.storageId);
+    if (!meta || !meta.contentType?.startsWith('image/') || meta.size > 10 * 1024 * 1024) {
+      await ctx.storage.delete(args.storageId);
+      throw new ConvexError({ code: 'INVALID_PHOTO', message: 'Chỉ nhận ảnh (JPG, PNG, WebP) tối đa 10 MB.' });
+    }
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new ConvexError('PHOTO_NOT_FOUND');
+    return url;
   },
 });
 
@@ -578,6 +681,7 @@ export const adminSnapshot = query({
         unitId: booking.unitId, unitName: unitById.get(String(booking.unitId))?.name ?? 'Chỗ nghỉ',
         unitTypeName: typeById.get(String(booking.unitTypeId))?.name ?? 'Chỗ nghỉ',
         checkIn: booking.checkIn, checkOut: booking.checkOut, adults: booking.adults, children: booking.children,
+        infants: booking.infants ?? 0, pets: booking.pets ?? 0,
         status: booking.status, source: booking.source, totalCents, serviceCents,
         syncConflict: Boolean(booking.syncConflict && !booking.syncConflictAcknowledgedAt), createdAt: booking.createdAt,
         residenceMissing: ['pending', 'confirmed'].includes(booking.status) ? (await residenceProgress(ctx, booking)).missing : 0,

@@ -57,7 +57,7 @@ describe('Consensus Commons seed migration', () => {
       .collect())).toHaveLength(1);
   });
 
-  it('seeds Sóng Homestay — Đà Nẵng with exactly 5 named accommodations and 3 services', async () => {
+  it('seeds Sóng Homestay — Đà Nẵng with the 8 catalog stays and 4 services', async () => {
     const t = convexTest(schema, modules);
     await t.mutation((internal as any).seed.run, {});
 
@@ -82,13 +82,15 @@ describe('Consensus Commons seed migration', () => {
     expect(songData).not.toBeNull();
     expect(songData!.prop.currency).toBe('VND');
     expect(songData!.prop).toMatchObject({ phone: '0911.388.703', email: 'Songhomestay@gmail.com' });
-    expect(songData!.units).toHaveLength(5);
-    expect(songData!.unitTypes).toHaveLength(5);
-    expect(songData!.addOns).toHaveLength(3);
+    expect(songData!.units).toHaveLength(8);
+    expect(songData!.unitTypes).toHaveLength(8);
+    expect(songData!.addOns).toHaveLength(4);
     expect(songData!.units.map((u) => u.slug)).toEqual([
-      'song-garden-house', 'song-sea-view-apartment', 'song-coastal-apartment', 'song-pool-villa', 'song-rooftop-house',
+      'song-pool-villa', 'song-garden-house', 'song-rooftop-house', 'song-sea-view-apartment',
+      'song-coastal-apartment', 'song-ocean-view-apartment', 'song-an-thuong-house', 'song-duong-ton-hai-house',
     ]);
     expect(songData!.units.every((unit) => unit.icalImports.length === 0)).toBe(true);
-    expect(songData!.unitTypes.find((row) => row.slug === 'song-rooftop-house')).toMatchObject({ capacityKnown: false, maxOccupancy: 0, bedrooms: 6, bathrooms: 6 });
+    expect(songData!.unitTypes.find((row) => row.slug === 'song-rooftop-house')).toMatchObject({ capacityKnown: true, maxOccupancy: 12, bedrooms: 6, bathrooms: 6 });
+    expect(songData!.addOns.find((row) => row.priceCents === 0)?.name).toMatch(/Tư vấn tour/);
   });
 });

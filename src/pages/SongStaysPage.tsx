@@ -19,7 +19,7 @@ export function SongStaysPage() {
   const stays = useMemo(() => {
     if (!property) return [];
     const allowed = hasSearch && availability?.valid ? new Set(availability.unitTypeIds.map(String)) : null;
-    return property.unitTypes.filter((stay) => (!allowed || allowed.has(String(stay.unitTypeId))) && (!form.type || stay.accommodationType === form.type));
+    return property.unitTypes.filter((stay) => !stay.comingSoon && (!allowed || allowed.has(String(stay.unitTypeId))) && (!form.type || stay.accommodationType === form.type));
   }, [property, availability, hasSearch, form.type]);
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -38,7 +38,7 @@ export function SongStaysPage() {
       <div className="mx-auto max-w-6xl">
         <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#1598ad]">Chỗ nghỉ tại Đà Nẵng</p>
         <h1 className="mt-2 text-4xl font-extrabold tracking-tight">Tìm không gian phù hợp với bạn</h1>
-        <p className="mt-3 max-w-2xl text-slate-600">Năm chỗ nghỉ riêng biệt, từ căn hộ view biển đến villa và nhà nguyên căn cho nhóm đông.</p>
+        <p className="mt-3 max-w-2xl text-slate-600">Tám chỗ nghỉ riêng biệt — căn hộ view biển Mỹ Khê, nhà có vườn, villa hồ bơi, rooftop BBQ và nhà nguyên căn cho thuê dài hạn.</p>
         <form onSubmit={submit} className="mt-8 grid gap-3 rounded-3xl bg-white p-5 shadow-lg md:grid-cols-5">
           <label><span className="field-label">Nhận phòng</span><input className="field-input" type="date" min={todayIso()} required value={form.checkIn} onChange={(e) => setForm({ ...form, checkIn: e.target.value })} /></label>
           <label><span className="field-label">Trả phòng</span><input className="field-input" type="date" min={form.checkIn || todayIso()} required value={form.checkOut} onChange={(e) => setForm({ ...form, checkOut: e.target.value })} /></label>
@@ -47,7 +47,7 @@ export function SongStaysPage() {
           <button className="btn-primary self-end justify-center"><Search className="h-4 w-4" /> Tìm chỗ nghỉ</button>
         </form>
         {hasSearch && availability === undefined ? <div className="py-12"><Spinner label="Đang kiểm tra lịch trống…" /></div> : null}
-        {availability?.reason && stays.length === 0 ? <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">{availability.reason} Hãy thử ngày khác hoặc liên hệ Sóng Homestay.</div> : null}
+        {availability?.reason && stays.length === 0 ? <div className="mt-8 rounded-2xl border border-sky-200 bg-sky-50 p-5 text-[#0b2e4f]">{availability.reason} Hãy thử ngày khác hoặc liên hệ Sóng Homestay.</div> : null}
         <div className="mt-10 grid gap-6 lg:grid-cols-2">{stays.map((stay) => <SongAccommodationCard key={stay.unitTypeId} stay={stay} currency={property.currency} query={query} />)}</div>
       </div>
     </div>

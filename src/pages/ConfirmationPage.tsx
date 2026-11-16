@@ -40,20 +40,20 @@ export function ConfirmationPage() {
         <div className="card p-8 text-center">
           <PartyPopper className="mx-auto h-10 w-10 text-cyan-700" aria-hidden="true" />
           <p className="text-sm font-bold uppercase tracking-[.18em] text-cyan-700">Đã tiếp nhận yêu cầu</p>
-          <h1 className="mt-2 text-2xl font-semibold text-stone-900">Đặt phòng đang chờ xác nhận</h1>
-          <p className="mt-2 text-stone-500">Sóng Homestay đã khóa lịch và sẽ liên hệ với bạn để xác nhận thông tin.</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">Đặt phòng đang chờ xác nhận</h1>
+          <p className="mt-2 text-slate-500">Sóng Homestay đã khóa lịch và sẽ liên hệ với bạn để xác nhận thông tin.</p>
           <p className="mt-4 rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900">Mã đặt phòng <span className="font-mono font-bold">{booking.confirmationCode}</span></p>
           <ResidenceReminder confirmationCode={booking.confirmationCode} />
-          <dl className="mt-6 space-y-2 text-left text-sm text-stone-600">
-            <div className="flex justify-between gap-4"><dt>Khách đặt</dt><dd className="font-medium text-stone-900">{booking.guestName}</dd></div>
-            <div className="flex justify-between gap-4"><dt>Chỗ nghỉ</dt><dd className="text-right font-medium text-stone-900">{booking.unitTypeName}</dd></div>
+          <dl className="mt-6 space-y-2 text-left text-sm text-slate-600">
+            <div className="flex justify-between gap-4"><dt>Khách đặt</dt><dd className="font-medium text-slate-900">{booking.guestName}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Chỗ nghỉ</dt><dd className="text-right font-medium text-slate-900">{booking.unitTypeName}</dd></div>
             <div className="flex justify-between"><dt>Nhận phòng</dt><dd>{formatDisplayDate(booking.checkIn)}</dd></div>
             <div className="flex justify-between"><dt>Trả phòng</dt><dd>{formatDisplayDate(booking.checkOut)}</dd></div>
             <div className="flex justify-between"><dt>Số khách</dt><dd>{booking.adults} người lớn{booking.children ? `, ${booking.children} trẻ em` : ''}</dd></div>
             <div className="flex justify-between"><dt>Số đêm</dt><dd>{booking.nights}</dd></div>
-            <div className="flex justify-between"><dt>Trạng thái</dt><dd className="font-semibold text-amber-700">Chờ xác nhận</dd></div>
+            <div className="flex justify-between"><dt>Trạng thái</dt><dd className="font-semibold text-sky-700">Chờ xác nhận</dd></div>
           </dl>
-          {booking.priceBreakdown ? <div className="mt-6 border-t border-stone-200 pt-6 text-left"><PriceBreakdownView price={booking.priceBreakdown} nights={booking.nights} currency={booking.currency} taxLabel={booking.taxLabel} /></div> : null}
+          {booking.priceBreakdown ? <div className="mt-6 border-t border-slate-200 pt-6 text-left"><PriceBreakdownView price={booking.priceBreakdown} nights={booking.nights} currency={booking.currency} taxLabel={booking.taxLabel} /></div> : null}
           <Link to={`/manage/${booking.confirmationCode}`} className="btn-secondary mt-6 inline-flex">Tra cứu đặt phòng</Link>
         </div>
       </div>
@@ -64,19 +64,19 @@ export function ConfirmationPage() {
     const property = propertyConfigs?.[0];
     return (
       <div className="card p-8 text-center">
-        <ShieldAlert className="mx-auto h-10 w-10 text-amber-600" aria-hidden="true" />
-        <h1 className="mt-3 text-2xl font-semibold text-stone-900">We couldn't hold these dates</h1>
+        <ShieldAlert className="mx-auto h-10 w-10 text-sky-600" aria-hidden="true" />
+        <h1 className="mt-3 text-2xl font-semibold text-slate-900">We couldn't hold these dates</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
-        <p className="mt-2 text-stone-500">
+        <p className="mt-2 text-slate-500">
           Your payment came through after the hold on these dates had already
           lapsed, and someone else booked them in the meantime. A refund case
           is being reconciled. Zaprite and Wavelength refunds require staff to
           record an external reference before OpenStays marks them completed.
         </p>
         {property ? (
-          <p className="mt-4 text-sm text-stone-600">
+          <p className="mt-4 text-sm text-slate-600">
             Questions? Contact {property.name} at{' '}
-            <a className="font-medium text-emerald-700 underline" href={`mailto:${property.email}`}>
+            <a className="font-medium text-sky-700 underline" href={`mailto:${property.email}`}>
               {property.email}
             </a>{' '}
             or {property.phone}.
@@ -92,11 +92,11 @@ export function ConfirmationPage() {
   if (booking.status === 'expired' || booking.status === 'cancelled') {
     return (
       <div className="card p-8 text-center">
-        <h1 className="text-2xl font-semibold text-stone-900">
+        <h1 className="text-2xl font-semibold text-slate-900">
           {booking.status === 'expired' ? 'This hold expired' : 'This booking was cancelled'}
         </h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
-        <p className="mt-2 text-stone-500">
+        <p className="mt-2 text-slate-500">
           {booking.status === 'expired'
             ? 'The dates were released. Please start a new booking.'
             : 'If this was a mistake, please start a new booking or contact us.'}
@@ -111,7 +111,7 @@ export function ConfirmationPage() {
   if (booking.status !== 'confirmed') {
     return (
       <div className="card p-8 text-center">
-        <h1 className="text-2xl font-semibold text-stone-900">Booking status: {booking.status.replace('_', ' ')}</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Booking status: {booking.status.replace('_', ' ')}</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
       </div>
     );
@@ -120,17 +120,17 @@ export function ConfirmationPage() {
   return (
     <div className="mx-auto max-w-lg">
       <div className="card p-8 text-center">
-        <PartyPopper className="mx-auto h-10 w-10 text-emerald-700" aria-hidden="true" />
-        <h1 className="mt-3 text-2xl font-semibold text-stone-900">You're all booked!</h1>
+        <PartyPopper className="mx-auto h-10 w-10 text-sky-700" aria-hidden="true" />
+        <h1 className="mt-3 text-2xl font-semibold text-slate-900">You're all booked!</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
-        <p className="mt-1 text-stone-500">
-          Confirmation code <span className="font-mono font-semibold text-stone-900">{booking.confirmationCode}</span>
+        <p className="mt-1 text-slate-500">
+          Confirmation code <span className="font-mono font-semibold text-slate-900">{booking.confirmationCode}</span>
         </p>
 
-        <dl className="mt-6 space-y-1 text-left text-sm text-stone-600">
+        <dl className="mt-6 space-y-1 text-left text-sm text-slate-600">
           <div className="flex justify-between">
             <dt>Stay</dt>
-            <dd className="font-medium text-stone-900">{booking.unitTypeName}</dd>
+            <dd className="font-medium text-slate-900">{booking.unitTypeName}</dd>
           </div>
           <div className="flex justify-between">
             <dt>Unit</dt>
@@ -147,7 +147,7 @@ export function ConfirmationPage() {
         </dl>
 
         {booking.priceBreakdown ? (
-          <div className="mt-6 border-t border-stone-200 pt-6 text-left">
+          <div className="mt-6 border-t border-slate-200 pt-6 text-left">
             <PriceBreakdownView price={booking.priceBreakdown} nights={booking.nights} currency={booking.currency} taxLabel={booking.taxLabel} />
           </div>
         ) : null}
@@ -167,10 +167,10 @@ function ResidenceReminder({ confirmationCode }: { confirmationCode: string }) {
   const row = mine?.find((b) => b.confirmationCode === confirmationCode);
   if (!row || row.progress.required === 0) return null;
   if (row.progress.missing === 0) {
-    return <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Đã khai báo lưu trú đủ cho tất cả người lớn.</p>;
+    return <p className="mt-4 rounded-xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">Đã khai báo lưu trú đủ cho tất cả người lớn.</p>;
   }
   return (
-    <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 text-left text-sm text-amber-900">
+    <div className="mt-4 rounded-xl border border-sky-300 bg-sky-50 px-4 py-4 text-left text-sm text-sky-900">
       <p className="flex items-center gap-2 font-bold"><BellRing className="h-4 w-4" />Bắt buộc: khai báo lưu trú</p>
       <p className="mt-1">Cần thông báo lưu trú cho {row.progress.missing} người lớn trước khi nhận phòng (họ tên, số định danh / CMND / hộ chiếu, lý do và thời gian lưu trú). Lễ tân không thể check-in khi còn thiếu.</p>
       <Link to={`/tai-khoan/luu-tru/${row.bookingId}`} className="btn-primary mt-3 inline-flex">Khai báo ngay</Link>

@@ -615,6 +615,48 @@ function addOneDay(isoDate: string): string {
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
+const SIMULATOR_FEED = /\/sim\/ical\/|^upload:/;
+
+/**
+ * Demo/dev cleanup: drop OTA-simulator (and manual-upload placeholder) feeds
+ * and release the external blocks they created. Only touches units whose feeds
+ * are ALL simulated, and only where the simulator itself may run, so a real
+ * Airbnb/Booking.com feed is never affected. Run:
+ *   npx convex run icalImport:removeSimulatorFeeds '{"propertySlug":"song-homestay"}'
+ */
+export const removeSimulatorFeeds = internalMutation({
+  args: { propertySlug: v.string() },
+  handler: async (ctx, args) => {
+    if (process.env.DEMO_MODE !== 'true' && process.env.ALLOW_OTA_SIMULATOR !== 'true') {
+      throw new ConvexError('OTA_SIMULATOR_DISABLED');
+    }
+    const property = await ctx.db.query('properties').withIndex('by_slug', (q) => q.eq('slug', args.propertySlug)).first();
+    if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
+    const units = await ctx.db.query('units').withIndex('by_property', (q) => q.eq('propertyId', property._id)).collect();
+    const now = Date.now();
+    let feedsRemoved = 0;
+    let blocksReleased = 0;
+    for (const unit of units) {
+      if (!unit.icalImports.length || !unit.icalImports.every((feed) => SIMULATOR_FEED.test(feed.url))) continue;
+      feedsRemoved += unit.icalImports.length;
+      await ctx.db.patch(unit._id, { icalImports: [] });
+      const bookings = await ctx.db.query('bookings').withIndex('by_unit_checkIn', (q) => q.eq('unitId', unit._id)).collect();
+      for (const booking of bookings) {
+        if (booking.status !== 'external' || !/^(ical|manual):/.test(booking.source)) continue;
+        await deleteNightsForBooking(ctx, booking._id);
+        await ctx.db.patch(booking._id, {
+          status: 'cancelled',
+          statusHistory: [...booking.statusHistory, { status: 'cancelled', ts: now }],
+          updatedAt: now,
+        });
+        blocksReleased += 1;
+      }
+    }
+    if (blocksReleased) await markPropertyDirtyInline(ctx, property._id);
+    return { feedsRemoved, blocksReleased };
+  },
+});
+
 async function deleteNightsForBooking(ctx: MutationCtx, bookingId: Id<'bookings'>): Promise<void> {
   const rows = await ctx.db
     .query('unitNights')

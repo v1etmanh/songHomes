@@ -51,6 +51,27 @@ describe('guest accounts for Sóng bookings', () => {
   beforeEach(() => vi.stubEnv('DEMO_MODE', 'true'));
   afterEach(() => vi.unstubAllEnvs());
 
+  it('records infants and pets outside capacity, lists the order, and lets the account cancel it', async () => {
+    const t = convexTest(schema, modules);
+    const fx = await setup(t);
+    const asAlice = t.withIdentity(identityFor(fx.alice));
+    const full = fx.songUnit.type.maxOccupancy;
+    await expect(asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), pets: 6 })).rejects.toThrow(/pets/);
+    await expect(asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), infants: -1 })).rejects.toThrow(/infants/);
+    const hold = await asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), adults: full, infants: 2, pets: 1 });
+    expect(await t.run(async (ctx) => ctx.db.get(hold.bookingId))).toMatchObject({ adults: full, infants: 2, pets: 1 });
+
+    const [order] = await asAlice.query(api.guestAccount.myBookings, {});
+    expect(order).toMatchObject({ bookingId: hold.bookingId, status: 'hold', infants: 2, pets: 1, nights: 2 });
+    expect(order.holdExpiresAt).toBeGreaterThan(Date.now());
+
+    await t.mutation(api.bookings.cancelByGuest, { confirmationCode: hold.confirmationCode, email: 'alice@example.com' });
+    await drainScheduled(t);
+    const [after] = await asAlice.query(api.guestAccount.myBookings, {});
+    expect(after).toMatchObject({ status: 'cancelled', holdExpiresAt: null });
+    expect(await t.run(async (ctx) => ctx.db.query('unitNights').withIndex('by_booking', (q) => q.eq('bookingId', hold.bookingId)).collect())).toHaveLength(0);
+  });
+
   it('requires a signed-in account for Sóng but not for other properties', async () => {
     const t = convexTest(schema, modules);
     const fx = await setup(t);

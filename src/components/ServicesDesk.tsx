@@ -52,7 +52,7 @@ export function ServicesDesk({
           className={live ? 'btn-primary' : 'btn-secondary'}
           onClick={() => setLive(true)}
         >
-          Khách đang sử dụng dịch vụ (Live)
+          Khách sử dụng dịch vụ
         </button>
       </div>
       {!live ? (

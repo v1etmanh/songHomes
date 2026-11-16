@@ -15,6 +15,7 @@ import { GuestForm, type GuestFormValue } from '../components/GuestForm';
 import { PriceBreakdownView } from '../components/PriceBreakdownView';
 import { StayMedia } from '../components/StayMedia';
 import { formatMoney } from '../lib/money';
+import { stayPrice } from '../lib/songStay';
 import { todayIso } from '../lib/dates';
 import { NotFoundPage } from './NotFoundPage';
 
@@ -46,6 +47,8 @@ export function UnitTypePage() {
     marketingOptIn: false,
     adults: 1,
     children: 0,
+    infants: 0,
+    pets: 0,
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -164,13 +167,14 @@ export function UnitTypePage() {
   }, [detail, range, addOnLines, promoActive, promoPreview]);
 
   if (!propertySlug || !unitTypeSlug) return <NotFoundPage />;
-  if (detail === undefined) return <Spinner label="Loading stay details…" />;
+  if (detail === undefined) return <Spinner label="Đang tải thông tin chỗ nghỉ…" />;
   if (detail === null) return <NotFoundPage />;
 
   const { unitType, ratePlan, addOns } = detail;
   const fromPriceCents = ratePlan
     ? Math.min(ratePlan.baseNightlyCents, ...ratePlan.seasons.map((s) => s.nightlyCents), ratePlan.baseNightlyCents)
     : null;
+  const price = stayPrice({ fromPriceCents, longStay: unitType.longStay, monthlyPriceCents: unitType.monthlyPriceCents }, detail.property.currency);
 
   const nights = range.checkIn && range.checkOut ? enumerateNights(range.checkIn, range.checkOut).length : 0;
   const defaultPromoPlaceholder = detail.property.slug === 'consensus-commons' ? 'CONSENSUS10' : 'WELCOME10';
@@ -201,6 +205,8 @@ export function UnitTypePage() {
         checkOut: range.checkOut,
         adults: guest.adults,
         children: guest.children,
+        infants: guest.infants || undefined,
+        pets: guest.pets || undefined,
         guest: {
           name: guest.name.trim(),
           email: guest.email.trim(),
@@ -221,19 +227,20 @@ export function UnitTypePage() {
   }
 
   return (
-    <div>
-      <div className="card mb-8 p-8">
-        <div className="mb-2 flex items-center gap-2">
-          {unitType.comingSoon ? <span className="badge">Coming soon</span> : null}
-        </div>
-        <h1 className="text-3xl font-semibold text-stone-900">{unitType.name}</h1>
-        <p className="mt-3 text-stone-600">{unitType.description}</p>
-        <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-stone-600">
-          <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-cyan-700" /> {unitType.address}</span>
-          <span className="flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-cyan-700" /> {unitType.bedrooms ?? '—'} phòng ngủ</span>
-          <span className="flex items-center gap-1.5"><Bath className="h-4 w-4 text-cyan-700" /> {unitType.bathrooms ?? '—'} phòng tắm</span>
-          <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-cyan-700" /> {unitType.maxOccupancy ? `Tối đa ${unitType.maxOccupancy} khách` : 'Liên hệ xác nhận sức chứa'}</span>
-          {unitType.areaSqm ? <span className="flex items-center gap-1.5"><Ruler className="h-4 w-4 text-cyan-700" /> {unitType.areaSqm} m²</span> : null}
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:items-start">
+      <div className="card p-6 sm:p-8">
+        {unitType.comingSoon ? <span className="badge mb-2">Sắp mở</span> : null}
+        <h1 className="text-3xl font-bold text-[#0b2e4f]">{unitType.name}</h1>
+        {price ? (
+          <p className="mt-2 text-lg font-bold text-[#087795]">Từ {price.amount} <span className="text-sm font-medium text-slate-500">/ {price.period}</span>{unitType.longStay ? <span className="ml-3 rounded-full bg-[#e3eefa] px-2.5 py-0.5 align-middle text-xs font-semibold text-[#1565a8]">Thuê dài hạn</span> : null}</p>
+        ) : null}
+        <p className="mt-3 leading-7 text-slate-600">{unitType.description}</p>
+        <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
+          <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[#1565a8]" /> {unitType.address}</span>
+          <span className="flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-[#1565a8]" /> {unitType.bedrooms ?? '—'} phòng ngủ</span>
+          <span className="flex items-center gap-1.5"><Bath className="h-4 w-4 text-[#1565a8]" /> {unitType.bathrooms ?? '—'} phòng tắm</span>
+          <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-[#1565a8]" /> {unitType.maxOccupancy ? `Tối đa ${unitType.maxOccupancy} khách` : 'Liên hệ xác nhận sức chứa'}</span>
+          {unitType.areaSqm ? <span className="flex items-center gap-1.5"><Ruler className="h-4 w-4 text-[#1565a8]" /> {unitType.areaSqm} m²</span> : null}
         </div>
         <StayMedia
           propertySlug={detail.property.slug}
@@ -241,23 +248,19 @@ export function UnitTypePage() {
           amenities={unitType.amenities}
           photoUrls={unitType.photoUrls}
         />
-        {fromPriceCents !== null ? (
-          <p className="mt-4 text-lg font-semibold text-emerald-800">Từ {formatMoney(fromPriceCents, detail.property.currency)}/đêm</p>
-        ) : null}
-        {unitType.highlights.length ? <div className="mt-5 flex flex-wrap gap-2">{unitType.highlights.map((item) => <span key={item} className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800">{item}</span>)}</div> : null}
-        {unitType.policies ? <div className="mt-6 grid gap-3 rounded-2xl bg-stone-50 p-5 text-sm text-stone-600 sm:grid-cols-2"><p><strong>Nhận phòng:</strong> {unitType.policies.checkIn}</p><p><strong>Trả phòng:</strong> {unitType.policies.checkOut}</p><p><strong>Trẻ em:</strong> {unitType.policies.children}</p><p><strong>Vật nuôi:</strong> {unitType.policies.pets}</p><p className="sm:col-span-2"><strong>Hủy đặt phòng:</strong> {unitType.policies.cancellation}</p></div> : null}
+        {unitType.policies ? <div className="mt-6 grid gap-3 rounded-2xl bg-[#eef4fa] p-5 text-sm text-slate-600 sm:grid-cols-2"><p><strong>Nhận phòng:</strong> {unitType.policies.checkIn}</p><p><strong>Trả phòng:</strong> {unitType.policies.checkOut}</p><p><strong>Trẻ em:</strong> {unitType.policies.children}</p><p><strong>Thú cưng:</strong> {unitType.policies.pets}</p><p className="sm:col-span-2"><strong>Hủy đặt phòng:</strong> {unitType.policies.cancellation}</p></div> : null}
       </div>
 
       {unitType.comingSoon || !ratePlan || !unitType.capacityKnown ? (
-        <div className="card p-8 text-center text-stone-600">
+        <div className="card p-8 text-center text-slate-600">
           <p>{!unitType.capacityKnown ? 'Sức chứa của chỗ nghỉ này đang được cập nhật. Vui lòng liên hệ 0911.388.703 để được tư vấn và giữ lịch.' : 'Chỗ nghỉ chưa mở đặt phòng. Vui lòng quay lại sau.'}</p>
         </div>
       ) : (
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div id="availability" className="space-y-6">
           <div className="card p-6">
-            <h2 className="mb-4 text-lg font-semibold text-stone-900">Chọn ngày lưu trú</h2>
+            <h2 className="mb-4 text-lg font-semibold text-[#0b2e4f]">Chọn ngày lưu trú</h2>
             {availability === undefined ? (
-              <Spinner label="Loading availability…" />
+              <Spinner label="Đang tải lịch trống…" />
             ) : (
               <StayDateRangePicker fullyBlockedDates={fullyBlockedDates} range={range} onChange={setRange} />
             )}
@@ -266,7 +269,6 @@ export function UnitTypePage() {
             ) : null}
           </div>
 
-          <div className="space-y-6">
             <div className="card p-6">
               <AddOnPicker
                 addOns={addOns}
@@ -279,13 +281,13 @@ export function UnitTypePage() {
             </div>
 
             <div className="card p-6">
-              <h2 className="mb-4 text-lg font-semibold text-stone-900">Mã giảm giá</h2>
+              <h2 className="mb-4 text-lg font-semibold text-[#0b2e4f]">Mã giảm giá</h2>
               <div className="flex gap-2">
                 <input
                   type="text"
                   className="field-input flex-1"
-                  placeholder={`e.g. ${promoPlaceholder}`}
-                  aria-label="Discount code"
+                  placeholder={`VD: ${promoPlaceholder}`}
+                  aria-label="Mã giảm giá"
                   value={promoInput}
                   onChange={(event) => setPromoInput(event.target.value)}
                   onKeyDown={(event) => {
@@ -298,25 +300,25 @@ export function UnitTypePage() {
                   onClick={() => setAppliedPromo(promoInput.trim() || null)}
                   disabled={promoInput.trim() === ''}
                 >
-                  Apply
+                  Áp dụng
                 </button>
               </div>
               {appliedPromo && promoPreview !== undefined ? (
                 promoPreview?.valid ? (
                   promoMinSpendShortfall !== null ? (
-                    <p className="mt-2 text-sm text-amber-700">
-                      {promoPreview.code} needs a subtotal of at least {formatMoney(promoMinSpendShortfall, detail.property.currency)} — add nights or extras to use it.
+                    <p className="mt-2 text-sm text-[#1565a8]">
+                      Mã {promoPreview.code} áp dụng cho đơn từ {formatMoney(promoMinSpendShortfall, detail.property.currency)} — thêm đêm hoặc dịch vụ để sử dụng.
                     </p>
                   ) : (
-                    <p className="mt-2 text-sm text-emerald-700">
-                      {promoPreview.code} applied{promoPreview.description ? ` — ${promoPreview.description}` : ''}.{' '}
+                    <p className="mt-2 text-sm text-[#087795]">
+                      Đã áp dụng {promoPreview.code}{promoPreview.description ? ` — ${promoPreview.description}` : ''}.{' '}
                       <button type="button" className="underline" onClick={() => { setAppliedPromo(null); setPromoInput(''); }}>
-                        Remove
+                        Bỏ mã
                       </button>
                     </p>
                   )
                 ) : (
-                  <p className="mt-2 text-sm text-red-700">That code isn't valid for this stay.</p>
+                  <p className="mt-2 text-sm text-red-700">Mã này không áp dụng cho chỗ nghỉ đã chọn.</p>
                 )
               ) : null}
             </div>
@@ -324,8 +326,8 @@ export function UnitTypePage() {
             {needsSignIn ? (
               <div className="card border-cyan-200 p-6 text-center">
                 <LogIn className="mx-auto h-8 w-8 text-[#087795]" />
-                <h2 className="mt-2 text-lg font-semibold text-stone-900">Đăng nhập để đặt phòng</h2>
-                <p className="mt-1 text-sm text-stone-500">Tài khoản giúp bạn theo dõi đơn và khai báo lưu trú cho khách đi cùng.</p>
+                <h2 className="mt-2 text-lg font-semibold text-[#0b2e4f]">Đăng nhập để đặt phòng</h2>
+                <p className="mt-1 text-sm text-slate-500">Tài khoản giúp bạn theo dõi đơn và khai báo lưu trú cho khách đi cùng.</p>
                 <div className="mt-4 flex flex-wrap justify-center gap-2">
                   <Link className="btn-primary" to={`/dang-nhap?next=${encodeURIComponent(returnPath)}`}>Đăng nhập</Link>
                   <Link className="btn-secondary" to={`/dang-nhap?tab=register&next=${encodeURIComponent(returnPath)}`}>Tạo tài khoản</Link>
@@ -333,14 +335,14 @@ export function UnitTypePage() {
               </div>
             ) : (
               <div className="card p-6">
-                <h2 className="mb-4 text-lg font-semibold text-stone-900">Thông tin người đặt</h2>
+                <h2 className="mb-4 text-lg font-semibold text-[#0b2e4f]">Thông tin người đặt</h2>
                 <GuestForm value={guest} onChange={setGuest} maxOccupancy={unitType.maxOccupancy ?? 20} emailLocked={accountRequired} />
               </div>
             )}
 
             {pricePreview ? (
               <div className="card p-6">
-                <h2 className="mb-4 text-lg font-semibold text-stone-900">Chi tiết giá</h2>
+                <h2 className="mb-4 text-lg font-semibold text-[#0b2e4f]">Chi tiết giá</h2>
                 <PriceBreakdownView price={pricePreview} nights={nights} currency={detail.property.currency} taxLabel={detail.property.taxLabel} />
               </div>
             ) : null}
@@ -350,7 +352,6 @@ export function UnitTypePage() {
             <button type="button" className="btn-primary w-full" disabled={!canSubmit} onClick={handleSubmit}>
               {submitting ? 'Đang giữ lịch…' : 'Tiếp tục xác nhận đặt phòng'}
             </button>
-          </div>
         </div>
       )}
     </div>

@@ -24,7 +24,7 @@ export function PriceBreakdownView({
       {price.addOnSubtotalCents > 0 ? <Row label="Dịch vụ bổ sung" value={fmt(price.addOnSubtotalCents)} /> : null}
       {price.promoDiscountCents > 0 ? <Row label="Mã giảm giá" value={fmt(-price.promoDiscountCents)} /> : null}
       <Row label={taxLabelOrDefault(taxLabel)} value={fmt(price.gstCents)} />
-      <div className="my-2 border-t border-stone-200" />
+      <div className="my-2 border-t border-slate-200" />
       <Row label="Tổng cộng" value={fmt(price.totalCents)} strong />
       {price.giftCertAppliedCents > 0 ? (
         <Row label="Phiếu quà tặng" value={fmt(-price.giftCertAppliedCents)} />
@@ -39,7 +39,7 @@ export function PriceBreakdownView({
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? 'font-semibold text-stone-900' : 'text-stone-600'}`}>
+    <div className={`flex items-center justify-between ${strong ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>

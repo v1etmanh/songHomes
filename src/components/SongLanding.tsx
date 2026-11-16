@@ -5,14 +5,18 @@ import {
   ArrowRight,
   Bike,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
+  Instagram,
   MapPin,
   Martini,
+  MessageCircle,
+  Play,
   Plane,
   Search,
   Sofa,
   Star,
-  Ticket,
   Users,
   Waves,
   Map as MapIcon,
@@ -20,7 +24,8 @@ import {
 
 import type { api } from '../../convex/_generated/api';
 import { todayIso } from '../lib/dates';
-import { formatMoney } from '../lib/money';
+import { SONG_LINKS } from '../lib/songLinks';
+import { stayPrice } from '../lib/songStay';
 
 type Property = NonNullable<FunctionReturnType<typeof api.properties.bySlug>>;
 type UnitType = Property['unitTypes'][number];
@@ -45,11 +50,27 @@ const AMENITIES = [
 ] as const;
 
 const SERVICES = [
-  { title: 'Thuê xe máy', text: 'Tự do khám phá Đà Nẵng với xe tay ga giao tận nơi.', icon: Bike },
-  { title: 'Đưa đón sân bay', text: 'Xe riêng đón bạn tại sân bay, đưa thẳng về Sóng.', icon: Plane },
-  { title: 'Vé tham quan & vui chơi', text: 'Hỗ trợ đặt vé Bà Nà Hills và các điểm vui chơi nổi bật.', icon: Ticket },
-  { title: 'Tour du lịch & khám phá', text: 'Khám phá Đà Nẵng, Hội An và các điểm lân cận cùng Sóng.', icon: MapIcon },
+  { title: 'Thuê xe máy', text: 'Xe tay ga giao tận nơi, kèm 2 mũ bảo hiểm và áo mưa — 150.000đ / ngày.', icon: Bike },
+  { title: 'Đưa đón sân bay', text: 'Xe riêng đón tại sân bay Đà Nẵng. Miễn phí chiều đón cho booking từ 3 đêm.', icon: Plane },
+  { title: 'Tour Đà Nẵng – Hội An', text: 'Bà Nà Hills, Cù Lao Chàm, Sơn Trà, Ký Ức Hội An — lịch trình linh hoạt.', icon: MapIcon },
+  { title: 'Tư vấn lịch trình miễn phí', text: 'Chat với Sóng để được gợi ý khung giờ đẹp và báo giá ưu đãi nhất.', icon: MessageCircle },
 ];
+
+/** Room tour clips, also posted on Instagram. Posters are the frame at 1s. */
+const VIDEOS = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ src: `/song-homestay/videos/video-${n}.mp4`, poster: `/song-homestay/videos/video-${n}.jpg` }));
+
+/**
+ * Guest reviews quoted from Sóng's public listings. Add new ones here as they
+ * come in, in the guest's own words; mark machine translations `translated`.
+ */
+const REVIEWS = [
+  { name: 'Bảo', country: 'Việt Nam', flag: 'vn', translated: false,
+    text: 'Không gian yên tĩnh, phòng sạch sẽ, nội thất tối giản nhưng đầy đủ tiện nghi. Vị trí gần biển, thuận tiện để đi dạo và khám phá khu vực xung quanh. Chủ nhà thân thiện và hỗ trợ rất nhiệt tình.' },
+  { name: 'Ivan', country: 'Nga', flag: 'ru', translated: true,
+    text: 'Cảm ơn vì chỗ ở tuyệt vời và sự thân thiện! Chúng tôi rất hài lòng khi lưu trú tại đây. Nếu có dịp quay lại, chắc chắn chúng tôi sẽ quay lại lần nữa.' },
+  { name: 'Evgeniia', country: 'Nga', flag: 'ru', translated: true,
+    text: 'Ngôi nhà được trang bị đầy đủ tiện nghi cần thiết và rất phong cách. Không chỉ có phòng tắm tiện nghi như khách sạn thông thường, mà còn có sách, trò chơi cho bạn bè và thậm chí cả thảm tập yoga. Ngồi ngoài sân vào buổi tối hoặc ăn sáng rất thoải mái.' },
+] as const;
 
 const EXPERIENCES_URL = '/p/song-homestay/experiences';
 
@@ -85,10 +106,12 @@ function DetailButton({ property, unitType, className = '' }: { property: Proper
 }
 
 function RoomFacts({ property, unitType }: { property: Property; unitType: UnitType }) {
+  const price = stayPrice(unitType, property.currency);
   return (
     <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-[#1565a8]">
       <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" aria-hidden="true" />{unitType.maxOccupancy ? `Tối đa ${unitType.maxOccupancy} khách` : 'Liên hệ sức chứa'}</span>
-      {unitType.fromPriceCents ? <span>Từ {formatMoney(unitType.fromPriceCents, property.currency)} / đêm</span> : null}
+      {price ? <span>Từ {price.amount} / {price.period}</span> : null}
+      {unitType.longStay ? <span className="rounded-full bg-[#e3eefa] px-2.5 py-0.5 text-xs">Thuê dài hạn</span> : null}
     </p>
   );
 }
@@ -98,7 +121,7 @@ function RoomFacts({ property, unitType }: { property: Property; unitType: UnitT
  * position through the room list. Mobile: plain stacked cards.
  */
 function RoomShowcase({ property }: { property: Property }) {
-  const rooms = property.unitTypes;
+  const rooms = property.unitTypes.filter((unitType) => !unitType.comingSoon);
   const track = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
 
@@ -237,6 +260,115 @@ function Amenities() {
   );
 }
 
+function VideoCard({ src, poster, index }: { src: string; poster: string; index: number }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  function toggle() {
+    const video = ref.current;
+    if (!video) return;
+    if (video.paused) void video.play();
+    else video.pause();
+  }
+  return (
+    <figure className="relative w-56 shrink-0 snap-start overflow-hidden rounded-[1.5rem] bg-[#0b2e4f] shadow-[0_14px_35px_rgba(8,47,85,0.18)] sm:w-60">
+      <video
+        ref={ref}
+        src={src}
+        poster={poster}
+        preload="none"
+        muted
+        loop
+        playsInline
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onClick={toggle}
+        className="aspect-[9/16] w-full cursor-pointer object-cover"
+        aria-label={`Video phòng Sóng Homestay ${index + 1}`}
+      />
+      {!playing ? (
+        <button type="button" onClick={toggle} aria-label={`Phát video ${index + 1}`} className="absolute inset-0 grid place-items-center bg-gradient-to-t from-[#082f55]/55 to-transparent">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-white/90 text-[#0b2e4f] shadow-lg"><Play className="ml-1 h-6 w-6 fill-current" aria-hidden="true" /></span>
+        </button>
+      ) : null}
+    </figure>
+  );
+}
+
+function RailButtons({ rail, step, label }: { rail: React.RefObject<HTMLDivElement | null>; step: number; label: string }) {
+  const scroll = (direction: 1 | -1) => rail.current?.scrollBy({ left: direction * step, behavior: 'smooth' });
+  const cls = 'grid h-11 w-11 place-items-center rounded-full bg-white text-[#0b2e4f] shadow-sm ring-1 ring-[#0b2e4f]/10 transition hover:bg-[#e3eefa]';
+  return (
+    <>
+      <button type="button" onClick={() => scroll(-1)} aria-label={`${label} trước`} className={cls}><ChevronLeft className="h-5 w-5" aria-hidden="true" /></button>
+      <button type="button" onClick={() => scroll(1)} aria-label={`${label} tiếp theo`} className={cls}><ChevronRight className="h-5 w-5" aria-hidden="true" /></button>
+    </>
+  );
+}
+
+function Videos() {
+  const rail = useRef<HTMLDivElement>(null);
+  return (
+    <section id="videos" className="scroll-mt-24 bg-[#eef4fa] px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <Heading eyebrow="Sóng trên Instagram" lead="Ghé thăm Sóng" accent="qua từng thước phim." />
+          <div className="flex items-center gap-2">
+            <RailButtons rail={rail} step={260} label="Video" />
+            <a href={SONG_LINKS.instagram} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex items-center gap-2 rounded-full bg-[#0b2e4f] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1565a8]"><Instagram className="h-4 w-4" aria-hidden="true" /> @_songhomestay</a>
+          </div>
+        </div>
+        <div ref={rail} className="no-scrollbar mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2">
+          {VIDEOS.map((video, index) => <VideoCard key={video.src} {...video} index={index} />)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Flag({ code }: { code: 'vn' | 'ru' }) {
+  if (code === 'vn') {
+    return <svg viewBox="0 0 30 20" className="h-3 w-[18px] rounded-[2px]" aria-hidden="true"><rect width="30" height="20" fill="#da251d" /><path fill="#ffcd00" d="m15 4 1.18 3.63h3.82l-3.09 2.24 1.18 3.63L15 11.26l-3.09 2.24 1.18-3.63L10 7.63h3.82Z" /></svg>;
+  }
+  return <svg viewBox="0 0 30 20" className="h-3 w-[18px] rounded-[2px] ring-1 ring-slate-200" aria-hidden="true"><rect width="30" height="20" fill="#fff" /><rect y="6.67" width="30" height="6.67" fill="#0039a6" /><rect y="13.33" width="30" height="6.67" fill="#d52b1e" /></svg>;
+}
+
+function ReviewCard({ review }: { review: (typeof REVIEWS)[number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <article className="flex w-[19rem] shrink-0 snap-start flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:w-[22rem]">
+      <div className="flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-[#1565a8] to-[#4a9ee0] font-bold text-white">{review.name.charAt(0)}</span>
+        <div>
+          <p className="font-bold text-[#0b2e4f]">{review.name}</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-500"><Flag code={review.flag} /> {review.country}</p>
+        </div>
+        <span className="ml-auto flex text-[#1565a8]" role="img" aria-label="5 sao">{[0, 1, 2, 3, 4].map((i) => <Star key={i} className="h-3.5 w-3.5 fill-current" aria-hidden="true" />)}</span>
+      </div>
+      <p className={`mt-4 text-[15px] leading-7 text-slate-700 ${open ? '' : 'line-clamp-4'}`}>“{review.text}”</p>
+      <button type="button" onClick={() => setOpen(!open)} className="mt-2 self-start text-sm font-semibold text-[#1565a8] hover:underline">{open ? 'Thu gọn' : 'Tìm hiểu thêm'}</button>
+      {review.translated ? <p className="mt-auto pt-3 text-xs text-slate-400">Được dịch tự động từ đánh giá gốc</p> : null}
+    </article>
+  );
+}
+
+function Reviews() {
+  const rail = useRef<HTMLDivElement>(null);
+  return (
+    <section id="reviews" className="scroll-mt-24 px-5 pb-28 pt-8 sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <Heading eyebrow="Khách nhà Sóng nói gì" lead="Những kỳ nghỉ" accent="được kể lại." />
+          <div className="flex gap-2"><RailButtons rail={rail} step={360} label="Đánh giá" /></div>
+        </div>
+        <div ref={rail} className="no-scrollbar mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2">
+          {REVIEWS.map((review) => <ReviewCard key={review.name} review={review} />)}
+        </div>
+        <a href={SONG_LINKS.facebookReviews} target="_blank" rel="noopener noreferrer" className="btn-secondary mt-8">Đọc tất cả đánh giá</a>
+      </div>
+    </section>
+  );
+}
+
 function Services() {
   return (
     <section id="services" className="scroll-mt-24 bg-[#eef4fa] px-5 py-24 sm:px-8">
@@ -281,9 +413,8 @@ export function SongLanding({ property }: { property: Property }) {
         <div className="mx-auto flex w-full max-w-6xl flex-1 items-center px-5 pb-10 pt-32 sm:px-8">
           <div className="max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-[0.32em] text-white/85 sm:text-sm">Đà Nẵng · Mỹ Khê</p>
-            <h1 className="mt-5 font-sans text-5xl font-semibold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl lg:text-7xl">
-              Sóng Homestay –<br />Where the sea meets <span className="font-accent font-normal italic tracking-normal">serenity.</span>
-            </h1>
+            <h1 className="mt-5 font-accent text-6xl font-normal italic leading-[1.02] text-white sm:text-7xl lg:text-8xl">Sóng Homestay</h1>
+            <p className="mt-4 font-sans text-2xl font-semibold tracking-[-0.02em] text-white/95 sm:text-3xl">Where the sea meets serenity</p>
             <p className="mt-7 max-w-2xl text-base font-medium leading-8 text-white/90 sm:text-lg">
               Một không gian lưu trú hiện đại, nơi bạn thức dậy cùng ánh nắng, lắng nghe tiếng sóng và tận hưởng nhịp sống dịu dàng của thành phố biển Đà Nẵng.
             </p>
@@ -320,6 +451,7 @@ export function SongLanding({ property }: { property: Property }) {
 
       <RoomShowcase property={property} />
       <Amenities />
+      <Videos />
       <Services />
 
       <section id="about" className="scroll-mt-24 px-5 py-24 sm:px-8">
@@ -327,8 +459,9 @@ export function SongLanding({ property }: { property: Property }) {
           <div>
             <Heading eyebrow="Về Sóng Homestay" lead="Ở gần biển." accent="Sống chậm một chút." />
             <p className="mt-6 text-base leading-8 text-slate-600">Từ chất liệu tự nhiên, gam xanh dịu mát đến cách đón tiếp chân thành, mỗi căn Sóng được tạo nên để bạn thật sự nghỉ ngơi — không chỉ là tìm một nơi để ngủ.</p>
-            <div className="mt-8 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">{property.unitTypes.length}</strong><span className="mt-1 block text-xs text-slate-500">Chỗ nghỉ</span></div>
+            <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">{property.unitTypes.filter((unitType) => !unitType.comingSoon).length}</strong><span className="mt-1 block text-xs text-slate-500">Chỗ nghỉ</span></div>
+              <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">800+</strong><span className="mt-1 block text-xs text-slate-500">Đánh giá từ Airbnb, Booking.com</span></div>
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">4.9</strong><span className="mt-1 block text-xs text-slate-500">Điểm yêu thích</span></div>
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">3'</strong><span className="mt-1 block text-xs text-slate-500">Đi bộ ra biển</span></div>
             </div>
@@ -347,15 +480,7 @@ export function SongLanding({ property }: { property: Property }) {
         </div>
       </section>
 
-      <section className="px-5 pb-24 sm:px-8">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 rounded-[2rem] bg-gradient-to-r from-[#0d4f8b] to-[#2f80c9] px-7 py-10 text-white shadow-xl sm:px-12 lg:flex-row lg:items-center">
-          <div>
-            <p className="font-bold uppercase tracking-[0.2em] text-blue-100">Sóng đang chờ bạn</p>
-            <h2 className="mt-2 font-sans text-3xl font-semibold tracking-tight">Sẵn sàng cho những ngày <span className="font-accent font-normal italic">thật xanh?</span></h2>
-          </div>
-          <button type="button" onClick={() => document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })} className="rounded-full bg-white px-7 py-3.5 font-bold text-[#1565a8] shadow-lg transition hover:-translate-y-0.5">Khám phá phòng <ArrowRight className="ml-2 inline h-5 w-5" aria-hidden="true" /></button>
-        </div>
-      </section>
+      <Reviews />
     </div>
   );
 }

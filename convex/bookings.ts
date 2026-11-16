@@ -87,6 +87,9 @@ export const createHold = mutation({
     checkOut: v.string(),
     adults: v.number(),
     children: v.number(),
+    // Under-2s and pets are recorded for the host but never count toward maxOccupancy.
+    infants: v.optional(v.number()),
+    pets: v.optional(v.number()),
     guest: v.object({
       name: v.string(),
       email: v.string(),
@@ -151,6 +154,11 @@ export const createHold = mutation({
     }
     if (!Number.isInteger(args.children) || args.children < 0) {
       throw new ConvexError({ code: 'INVALID_OCCUPANCY', message: 'Children must be zero or more.' });
+    }
+    for (const [field, value, max] of [['infants', args.infants ?? 0, 5], ['pets', args.pets ?? 0, 5]] as const) {
+      if (!Number.isInteger(value) || value < 0 || value > max) {
+        throw new ConvexError({ code: 'INVALID_OCCUPANCY', message: `${field} must be between 0 and ${max}.` });
+      }
     }
     if (args.adults + args.children > unitType.maxOccupancy) {
       throw new ConvexError({
@@ -334,6 +342,8 @@ export const createHold = mutation({
       nights: enumerateNights(args.checkIn, args.checkOut).length,
       adults: args.adults,
       children: args.children,
+      ...(args.infants ? { infants: args.infants } : {}),
+      ...(args.pets ? { pets: args.pets } : {}),
       status: 'hold',
       holdExpiresAt: now + HOLD_TTL_MS,
       source: 'online',

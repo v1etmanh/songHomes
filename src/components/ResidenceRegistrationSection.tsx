@@ -150,59 +150,59 @@ export function ResidenceRegistrationSection({
 
   return (
     <section
-      className="mt-6 border-t border-stone-200 pt-6"
+      className="mt-6 border-t border-slate-200 pt-6"
       aria-labelledby="residence-registration-heading"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2
             id="residence-registration-heading"
-            className="flex items-center gap-2 text-base font-semibold text-stone-900"
+            className="flex items-center gap-2 text-base font-semibold text-slate-900"
           >
-            <FileCheck2 className="h-5 w-5 text-emerald-700" aria-hidden="true" />
+            <FileCheck2 className="h-5 w-5 text-sky-700" aria-hidden="true" />
             Cung cấp thông tin lưu trú / tạm vắng
           </h2>
-          <p className="mt-1 text-sm text-stone-600">
+          <p className="mt-1 text-sm text-slate-600">
             Cung cấp thông tin giấy tờ tùy thân (CCCD / Hộ chiếu) để Sóng Homestay hỗ trợ thủ tục trên kênh chính thức.
             Biểu mẫu này không kết nối trực tiếp cơ quan quản lý cư trú.
           </p>
         </div>
         {data?.registrations ? (
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+          <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
             Đã khai báo: {data.registrations.length} khách
           </span>
         ) : null}
       </div>
 
       {!validEmail ? (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
           Vui lòng nhập đúng <strong>Email đặt phòng (Booking email)</strong> ở ô phía trên để mở biểu mẫu khai báo
           tạm trú / tạm vắng và xem danh sách khách đã đăng ký.
         </div>
       ) : (
         <div className="mt-4 space-y-5">
           {data === undefined ? (
-            <p className="text-sm text-stone-500">Đang tải thông tin khai báo lưu trú…</p>
+            <p className="text-sm text-slate-500">Đang tải thông tin khai báo lưu trú…</p>
           ) : (
             <>
               {data.registrations.length > 0 ? (
                 <div className="space-y-3" data-testid="residence-registration-list">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Danh sách tờ khai đã gửi ({data.registrations.length})
                   </h3>
                   {data.registrations.map((item) => (
                     <div
                       key={item._id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50/80 p-3.5 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 text-sm"
                     >
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-stone-900">{item.fullName}</span>
+                          <span className="font-semibold text-slate-900">{item.fullName}</span>
                           <span
                             className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                               item.registrationType === 'tam_tru'
-                                ? 'bg-emerald-100 text-emerald-900'
-                                : 'bg-amber-100 text-amber-900'
+                                ? 'bg-sky-100 text-sky-900'
+                                : 'bg-sky-100 text-sky-900'
                             }`}
                           >
                             {item.registrationType === 'tam_tru' ? 'Đăng ký Tạm trú' : 'Đăng ký Tạm vắng'}
@@ -211,7 +211,7 @@ export function ResidenceRegistrationSection({
                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                               item.status === 'verified'
                                 ? 'bg-sky-100 text-sky-900'
-                                : 'bg-stone-200 text-stone-700'
+                                : 'bg-slate-200 text-slate-700'
                             }`}
                           >
                             {item.status === 'verified' ? (
@@ -227,12 +227,12 @@ export function ResidenceRegistrationSection({
                             )}
                           </span>
                         </div>
-                        <p className="text-xs text-stone-600">
+                        <p className="text-xs text-slate-600">
                           {DOC_TYPE_LABELS[item.documentType]}: <strong className="font-mono">{item.documentNumber}</strong> · Quốc
                           tịch: {item.nationality}
                           {item.phone ? ` · SĐT: ${item.phone}` : ''}
                         </p>
-                        <p className="text-xs text-stone-500">
+                        <p className="text-xs text-slate-500">
                           Thời gian: <strong>{item.checkInDate}</strong> → <strong>{item.checkOutDate}</strong>
                           {item.permanentAddress ? ` · Đ/c thường trú: ${item.permanentAddress}` : ''}
                           {item.reason ? ` · Ghi chú: ${item.reason}` : ''}
@@ -253,7 +253,7 @@ export function ResidenceRegistrationSection({
                   ))}
                 </div>
               ) : (
-                <p className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-4 text-sm text-stone-600">
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                   Chưa có tờ khai tạm trú / tạm vắng nào cho mã đặt phòng này. Vui lòng điền thông tin bên dưới.
                 </p>
               )}
@@ -261,18 +261,18 @@ export function ResidenceRegistrationSection({
               {!disabled ? (
                 <form
                   onSubmit={(e) => void handleSubmit(e)}
-                  className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
                   data-testid="residence-registration-form"
                 >
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-stone-900">Thêm tờ khai mới</h3>
-                    <div className="inline-flex rounded-lg border border-stone-200 bg-stone-100 p-0.5 text-xs font-semibold">
+                    <h3 className="text-sm font-semibold text-slate-900">Thêm tờ khai mới</h3>
+                    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
                       <button
                         type="button"
                         className={`rounded-md px-3 py-1.5 transition ${
                           registrationType === 'tam_tru'
-                            ? 'bg-emerald-700 text-white shadow-sm'
-                            : 'text-stone-700 hover:text-stone-900'
+                            ? 'bg-sky-700 text-white shadow-sm'
+                            : 'text-slate-700 hover:text-slate-900'
                         }`}
                         onClick={() => {
                           setRegistrationType('tam_tru');
@@ -287,8 +287,8 @@ export function ResidenceRegistrationSection({
                         type="button"
                         className={`rounded-md px-3 py-1.5 transition ${
                           registrationType === 'tam_vang'
-                            ? 'bg-amber-600 text-white shadow-sm'
-                            : 'text-stone-700 hover:text-stone-900'
+                            ? 'bg-sky-600 text-white shadow-sm'
+                            : 'text-slate-700 hover:text-slate-900'
                         }`}
                         onClick={() => {
                           setRegistrationType('tam_vang');
@@ -451,19 +451,19 @@ export function ResidenceRegistrationSection({
                     <div
                       className={`mt-3 flex items-center gap-2 rounded-lg p-3 text-sm ${
                         feedback.kind === 'ok'
-                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
+                          ? 'border border-sky-200 bg-sky-50 text-sky-900'
                           : 'border border-red-200 bg-red-50 text-red-800'
                       }`}
                       role="status"
                     >
                       {feedback.kind === 'ok' ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-700" aria-hidden="true" />
                       ) : null}
                       <span>{feedback.text}</span>
                     </div>
                   ) : null}
 
-                  <label className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                  <label className="mt-4 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
                     <input type="checkbox" className="mt-0.5" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
                     <span>Tôi đồng ý cho Sóng Homestay lưu và xử lý thông tin trên để hỗ trợ khai báo lưu trú. Dữ liệu dự kiến được lưu tối đa 180 ngày và không đưa vào nguồn iCal.</span>
                   </label>

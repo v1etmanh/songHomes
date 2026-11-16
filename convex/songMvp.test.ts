@@ -30,14 +30,16 @@ describe('Sóng Homestay v2 MVP', () => {
   beforeEach(() => vi.stubEnv('DEMO_MODE', 'true'));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('searches all five accommodations by capacity and excludes unknown capacity', async () => {
+  it('searches the eight stays by capacity, keeping 30-night rentals out of short searches', async () => {
     const t = convexTest(schema, modules);
     await seeded(t);
     const fiveGuests = await t.query(api.availability.searchProperty, { propertySlug: 'song-homestay', checkIn: '2027-01-10', checkOut: '2027-01-12', guests: 5 });
     expect(fiveGuests.valid).toBe(true);
-    expect(fiveGuests.unitTypeIds).toHaveLength(4);
+    expect(fiveGuests.unitTypeIds).toHaveLength(6);
     const eightGuests = await t.query(api.availability.searchProperty, { propertySlug: 'song-homestay', checkIn: '2027-01-10', checkOut: '2027-01-12', guests: 8 });
-    expect(eightGuests.unitTypeIds).toHaveLength(1);
+    expect(eightGuests.unitTypeIds).toHaveLength(2); // Pool Villa (8) and Rooftop House (12)
+    const month = await t.query(api.availability.searchProperty, { propertySlug: 'song-homestay', checkIn: '2027-01-10', checkOut: '2027-02-10', guests: 4 });
+    expect(month.unitTypeIds).toHaveLength(2); // only the long-term houses allow a 31-night stay
   });
 
   it('keeps pending nights blocked, then releases them when staff cancels', async () => {

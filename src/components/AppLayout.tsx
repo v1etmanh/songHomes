@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Mail, MapPin, Mountain, Phone, Waves } from 'lucide-react';
+import { Facebook, Instagram, Mail, MapPin, Mountain, Phone, Waves } from 'lucide-react';
+import { SONG_LINKS } from '../lib/songLinks';
 import { PUBLIC_SHOWCASE } from '../lib/publicShowcase';
 import { GuestAccountMenu } from './GuestAccountMenu';
 
@@ -15,6 +16,20 @@ export function AppLayout() {
     if (!isSongLanding || !location.hash) return;
     requestAnimationFrame(() => document.querySelector(location.hash)?.scrollIntoView({ behavior: 'smooth' }));
   }, [isSongLanding, location.hash]);
+
+  // A new page always opens at its top (links from deep in the landing page used to land mid-page).
+  useEffect(() => {
+    if (location.hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname, location.hash]);
+
+  const navItems = [
+    { to: '/p/song-homestay', label: 'Trang chủ', active: isSongLanding && !location.hash },
+    { to: '/p/song-homestay/stays', label: 'Chỗ nghỉ', active: location.pathname.startsWith('/p/song-homestay/stay') },
+    { to: '/p/song-homestay/experiences', label: 'Khám phá Đà Nẵng', active: location.pathname.startsWith('/p/song-homestay/experiences') },
+    { to: '/p/song-homestay/about', label: 'Về Sóng', active: location.pathname.startsWith('/p/song-homestay/about') },
+    { to: '/p/song-homestay/contact', label: 'Liên hệ', active: location.pathname.startsWith('/p/song-homestay/contact') },
+  ];
 
   if (!PUBLIC_SHOWCASE.enabled) {
     if (isAdmin) {
@@ -40,11 +55,9 @@ export function AppLayout() {
               <span className="hidden font-sans text-base font-extrabold tracking-tight sm:inline sm:text-lg">Sóng Homestay</span>
             </Link>
             <nav aria-label="Điều hướng chính" className="hidden items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-slate-600 lg:flex">
-              <Link to="/p/song-homestay" className={`rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8] ${isSongLanding && !location.hash ? 'bg-[#e3eefa] text-[#1565a8]' : ''}`}>Trang chủ</Link>
-              <Link to="/p/song-homestay/stays" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Chỗ nghỉ</Link>
-              <Link to="/p/song-homestay/experiences" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Khám phá Đà Nẵng</Link>
-              <Link to="/p/song-homestay/about" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Về Sóng</Link>
-              <Link to="/p/song-homestay/contact" className="rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8]">Liên hệ</Link>
+              {navItems.map((item) => (
+                <Link key={item.to} to={item.to} aria-current={item.active ? 'page' : undefined} className={`rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8] ${item.active ? 'bg-[#e3eefa] text-[#1565a8]' : ''}`}>{item.label}</Link>
+              ))}
             </nav>
             <div className="flex items-center gap-2 whitespace-nowrap"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#0b2e4f] px-4 py-2.5 text-sm font-bold text-white sm:px-5 transition hover:bg-[#1565a8]">Đặt phòng ngay</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#1565a8]/25 px-4 py-2.5 text-sm font-bold text-[#1565a8] transition hover:border-[#1565a8] hover:bg-[#1565a8] hover:text-white xl:inline">Quản trị</Link> : null}</div>
           </div>
@@ -52,7 +65,12 @@ export function AppLayout() {
         <main id="main-content" tabIndex={-1} className={isSongPublic ? (isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8') : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>
           <Outlet />
         </main>
-        <footer className="bg-[#082c4f] px-5 py-14 text-sm text-white/70 sm:px-8">
+        <footer className="relative bg-[#082c4f] px-5 pb-14 pt-20 text-sm text-white/70 sm:px-8">
+          {/* Wave edge: the footer rises out of the page like a breaking wave. */}
+          <svg aria-hidden="true" viewBox="0 0 1440 120" preserveAspectRatio="none" className="absolute inset-x-0 -top-px h-12 w-full rotate-180 text-[#f4fafc] sm:h-16">
+            <path fill="currentColor" d="M0 64c120 32 240 48 360 40s240-48 360-48 240 40 360 48 240-8 360-40v56H0Z" />
+            <path fill="currentColor" opacity=".45" d="M0 40c160 40 320 60 480 44s320-60 480-60 320 40 480 56v40H0Z" />
+          </svg>
           <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[1.2fr_.8fr_.8fr]">
             <div>
               <Link to="/p/song-homestay" className="flex items-center gap-3 text-white">
@@ -60,13 +78,17 @@ export function AppLayout() {
                 <span className="font-sans text-xl font-extrabold">Sóng Homestay</span>
               </Link>
               <p className="mt-4 max-w-sm leading-7">Không gian nghỉ dưỡng gần biển Mỹ Khê, nơi bạn chạm vào nhịp sống dịu dàng của Đà Nẵng.</p>
+              <div className="mt-6 flex gap-3">
+                <a href={SONG_LINKS.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook Sóng Homestay" className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white hover:text-[#082c4f]"><Facebook className="h-5 w-5" /></a>
+                <a href={SONG_LINKS.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram Sóng Homestay" className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white hover:text-[#082c4f]"><Instagram className="h-5 w-5" /></a>
+              </div>
             </div>
             <div>
               <h2 className="font-sans font-bold text-white">Liên hệ</h2>
               <div className="mt-4 space-y-3">
                 <p className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" /> Đà Nẵng, Việt Nam</p>
-                <p className="flex gap-2"><Phone className="h-4 w-4 shrink-0 text-sky-300" /> 0911.388.703</p>
-                <p className="flex gap-2"><Mail className="h-4 w-4 shrink-0 text-sky-300" /> Songhomestay@gmail.com</p>
+                <a href={SONG_LINKS.phoneHref} className="flex gap-2 hover:text-white"><Phone className="h-4 w-4 shrink-0 text-sky-300" /> {SONG_LINKS.phone}</a>
+                <a href={`mailto:${SONG_LINKS.email}`} className="flex gap-2 hover:text-white"><Mail className="h-4 w-4 shrink-0 text-sky-300" /> {SONG_LINKS.email}</a>
               </div>
             </div>
             <div>

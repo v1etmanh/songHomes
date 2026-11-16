@@ -227,6 +227,9 @@ export default defineSchema({
     areaSqm: v.optional(v.number()),
     capacityKnown: v.optional(v.boolean()),
     highlights: v.optional(v.array(v.string())),
+    // Long-term rental (sold by the month); also drives the tạm trú list.
+    longStay: v.optional(v.boolean()),
+    monthlyPriceCents: v.optional(v.number()), // display price for long stays; booking math stays nightly
     policies: v.optional(v.object({
       checkIn: v.optional(v.string()),
       checkOut: v.optional(v.string()),
@@ -345,7 +348,9 @@ export default defineSchema({
     checkOut: v.string(), // exclusive
     nights: v.number(),
     adults: v.number(),
-    children: v.number(),
+    children: v.number(), // ages 2–12
+    infants: v.optional(v.number()), // under 2: not counted against maxOccupancy
+    pets: v.optional(v.number()),
     status: bookingStatus,
     holdExpiresAt: v.optional(v.number()), // set while status === 'hold'
     source: v.string(), // 'online' | 'front_desk' | 'phone' | 'ical:Airbnb' | 'channel:Booking.com' | 'demo'

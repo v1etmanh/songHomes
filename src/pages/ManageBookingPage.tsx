@@ -151,16 +151,16 @@ export function ManageBookingPage() {
   return (
     <div className="mx-auto max-w-lg">
       <div className="card p-8">
-        <h1 className="text-2xl font-semibold text-stone-900">Manage your booking</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Manage your booking</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
-        <p className="mt-1 text-sm text-stone-500">
-          Confirmation code <span className="font-mono font-medium text-stone-900">{booking.confirmationCode}</span>
+        <p className="mt-1 text-sm text-slate-500">
+          Confirmation code <span className="font-mono font-medium text-slate-900">{booking.confirmationCode}</span>
         </p>
 
-        <dl className="mt-6 space-y-1 text-sm text-stone-600">
+        <dl className="mt-6 space-y-1 text-sm text-slate-600">
           <div className="flex justify-between">
             <dt>Stay</dt>
-            <dd className="font-medium text-stone-900">{booking.unitTypeName}</dd>
+            <dd className="font-medium text-slate-900">{booking.unitTypeName}</dd>
           </div>
           <div className="flex justify-between">
             <dt>Status</dt>
@@ -177,37 +177,37 @@ export function ManageBookingPage() {
         </dl>
 
         {booking.status === 'cancelled' ? (
-          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4" role="status">
-            <p className="font-semibold text-amber-950">This booking is cancelled.</p>
-            <p className="mt-1 text-sm text-amber-900">
+          <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4" role="status">
+            <p className="font-semibold text-sky-950">This booking is cancelled.</p>
+            <p className="mt-1 text-sm text-sky-900">
               Historical milestones and the immutable timestamp receipt remain below for reference.
             </p>
           </div>
         ) : null}
 
-        <section className="mt-6 border-t border-stone-200 pt-6" aria-labelledby="booking-chat-heading">
-          <h2 id="booking-chat-heading" className="text-lg font-semibold text-stone-900">Booking conversation</h2>
-          <p className="mt-1 text-sm text-stone-500">Messages stay with this reservation. Email alerts link back here.</p>
+        <section className="mt-6 border-t border-slate-200 pt-6" aria-labelledby="booking-chat-heading">
+          <h2 id="booking-chat-heading" className="text-lg font-semibold text-slate-900">Booking conversation</h2>
+          <p className="mt-1 text-sm text-slate-500">Messages stay with this reservation. Email alerts link back here.</p>
           <label className="field-label mt-4" htmlFor="conversation-email">Booking email</label>
           <input id="conversation-email" type="email" className="field-input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
-          <p className="mt-2 text-xs text-stone-500">
+          <p className="mt-2 text-xs text-slate-500">
             Enter it once to open your conversation, booking history, and available actions.
           </p>
           {thread ? (
             <div className="mt-4 space-y-3" aria-live="polite">
-              {thread.length === 0 ? <p className="text-sm text-stone-500">No messages yet. Ask the host anything about your stay.</p> : thread.map((message) => (
-                <article key={message._id} className={`rounded-xl p-3 text-sm ${message.authorRole === 'guest' ? 'ml-8 bg-emerald-50' : 'mr-8 bg-stone-100'}`}>
-                  <p className="text-xs font-semibold text-stone-500">{message.authorName}</p>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-stone-800">{message.text}</p>
+              {thread.length === 0 ? <p className="text-sm text-slate-500">No messages yet. Ask the host anything about your stay.</p> : thread.map((message) => (
+                <article key={message._id} className={`rounded-xl p-3 text-sm ${message.authorRole === 'guest' ? 'ml-8 bg-sky-50' : 'mr-8 bg-slate-100'}`}>
+                  <p className="text-xs font-semibold text-slate-500">{message.authorName}</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-slate-800">{message.text}</p>
                 </article>
               ))}
               <textarea className="field-input min-h-24 resize-y" value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={2000} placeholder="Write a message…" aria-label="Message" />
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-stone-400">{messageText.length}/2,000</span>
+                <span className="text-xs text-slate-400">{messageText.length}/2,000</span>
                 <button type="button" className="btn-primary" disabled={sendingMessage || !messageText.trim()} onClick={() => void handleMessage()}>{sendingMessage ? 'Sending…' : 'Send message'}</button>
               </div>
             </div>
-          ) : <p className="mt-3 text-sm text-stone-500">Booking details stay hidden until the email matches this reservation.</p>}
+          ) : <p className="mt-3 text-sm text-slate-500">Booking details stay hidden until the email matches this reservation.</p>}
         </section>
 
         <ResidenceRegistrationSection
@@ -218,15 +218,15 @@ export function ManageBookingPage() {
           disabled={cancelled}
         />
 
-        {consensus ? <section className="mt-6 border-t border-stone-200 pt-6" aria-labelledby="consensus-heading">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Consensus Commons</p>
-          <h2 id="consensus-heading" className="mt-1 text-lg font-semibold text-stone-900">
+        {consensus ? <section className="mt-6 border-t border-slate-200 pt-6" aria-labelledby="consensus-heading">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Consensus Commons</p>
+          <h2 id="consensus-heading" className="mt-1 text-lg font-semibold text-slate-900">
             {cancelled ? 'Booking history' : 'Consensus reached'}
           </h2>
           <ol className="mt-4 space-y-3">{consensus.map((step) => (
             <li key={step.key} className="grid grid-cols-[1rem_1fr] gap-3">
-              <span className={`mt-1 h-3 w-3 rounded-full ${step.state === 'reached' ? 'bg-emerald-500' : step.state === 'attention' ? 'bg-amber-500' : 'bg-stone-300'}`} aria-hidden="true" />
-              <div><p className="text-sm font-semibold text-stone-800">{step.label}</p><p className="text-xs text-stone-500">{step.detail}</p></div>
+              <span className={`mt-1 h-3 w-3 rounded-full ${step.state === 'reached' ? 'bg-sky-500' : step.state === 'attention' ? 'bg-sky-500' : 'bg-slate-300'}`} aria-hidden="true" />
+              <div><p className="text-sm font-semibold text-slate-800">{step.label}</p><p className="text-xs text-slate-500">{step.detail}</p></div>
             </li>
           ))}</ol>
         </section> : null}
@@ -246,7 +246,7 @@ export function ManageBookingPage() {
 
         {receipt && reward && PUBLIC_SHOWCASE.enabled && reward.status !== 'paid'
           && operations && !operations.rewardAvailable ? (
-          <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p role="status" className="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
             The 1,000-sat signet reward is temporarily unavailable while the
             merchant bridge or funded reward budget is unhealthy. Your receipt
             and reward eligibility remain recorded.
@@ -269,20 +269,20 @@ export function ManageBookingPage() {
         /> : null}
 
         {PUBLIC_SHOWCASE.enabled && publicRefund?.refundablePaymentCount ? (
-          <section className="mt-6 rounded-xl border border-stone-200 p-4" aria-labelledby="public-refund-heading">
-            <h2 id="public-refund-heading" className="font-semibold text-stone-900">
+          <section className="mt-6 rounded-xl border border-slate-200 p-4" aria-labelledby="public-refund-heading">
+            <h2 id="public-refund-heading" className="font-semibold text-slate-900">
               Project contribution refund
             </h2>
-            <p className="mt-1 text-sm text-stone-600">
+            <p className="mt-1 text-sm text-slate-600">
               Zaprite and Wavelength refunds are handled manually. The payment
               remains paid until staff records the external refund reference.
             </p>
             {publicRefund.completedCaseCount > 0 ? (
-              <p role="status" className="mt-3 text-sm font-medium text-emerald-700">
+              <p role="status" className="mt-3 text-sm font-medium text-sky-700">
                 Refund completed by staff.
               </p>
             ) : publicRefund.requestedCaseCount > 0 ? (
-              <p role="status" className="mt-3 text-sm font-medium text-amber-800">
+              <p role="status" className="mt-3 text-sm font-medium text-sky-800">
                 Refund requested. Staff resolution is pending.
               </p>
             ) : (
@@ -299,7 +299,7 @@ export function ManageBookingPage() {
         ) : null}
 
         {result ? (
-          <div className="mt-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="mt-6 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-800">
             <p className="font-medium">Booking cancelled.</p>
             <p className="mt-1">
               Paid before cancellation: {formatMoney(result.paidCents, booking?.currency)} · Refund amount: {formatMoney(result.refundCents, booking?.currency)}
@@ -311,9 +311,9 @@ export function ManageBookingPage() {
             ) : <p className="mt-1">No refund is due under the cancellation policy.</p>}
           </div>
         ) : cancellable ? (
-          <div className="mt-6 border-t border-stone-200 pt-6">
-            <h2 className="text-lg font-semibold text-stone-900">Cancellation</h2>
-            <p className="mt-1 text-sm text-stone-500">
+          <div className="mt-6 border-t border-slate-200 pt-6">
+            <h2 className="text-lg font-semibold text-slate-900">Cancellation</h2>
+            <p className="mt-1 text-sm text-slate-500">
               {email.includes('@')
                 ? 'This action uses the booking email entered above.'
                 : 'Enter the booking email above to enable cancellation.'}
@@ -357,7 +357,7 @@ export function ManageBookingPage() {
             )}
           </div>
         ) : (
-          <p className="mt-6 text-sm text-stone-500">This booking can no longer be modified here.</p>
+          <p className="mt-6 text-sm text-slate-500">This booking can no longer be modified here.</p>
         )}
       </div>
     </div>

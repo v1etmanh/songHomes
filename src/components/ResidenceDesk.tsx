@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Search } from 'lucide-react';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -38,6 +38,78 @@ function DocumentCell({ row }: { row: RecordRow }) {
   );
 }
 
+function foldText(value: string) {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().trim();
+}
+
+type PickerOption = { id: string; label: string; hint: string };
+
+/** Type-to-filter booking picker: matches code, guest name, unit and dates. */
+function BookingPicker({ options, value, onChange }: { options: PickerOption[]; value: string; onChange: (id: string) => void }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.id === value);
+  const needle = foldText(query);
+  const matches = options.filter((o) => !needle || foldText(`${o.label} ${o.hint}`).includes(needle)).slice(0, 50);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  function choose(option: PickerOption) {
+    onChange(option.id);
+    setQuery('');
+    setOpen(false);
+  }
+  return (
+    <div ref={root} className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <input
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="booking-picker-list"
+          aria-labelledby="booking-picker-label"
+          aria-autocomplete="list"
+          className="field-input pl-9 pr-9"
+          placeholder={selected ? selected.label : 'Gõ mã booking, tên khách hoặc cơ sở…'}
+          value={open ? query : selected?.label ?? ''}
+          onFocus={() => { setOpen(true); setActive(0); }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(0); }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((i) => Math.min(i + 1, matches.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
+            else if (e.key === 'Enter' && open && matches[active]) { e.preventDefault(); choose(matches[active]); }
+            else if (e.key === 'Escape') { setOpen(false); }
+          }}
+        />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+      </div>
+      {open ? (
+        <ul id="booking-picker-list" role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+          {matches.map((option, index) => (
+            <li
+              key={option.id}
+              role="option"
+              aria-selected={option.id === value}
+              onMouseDown={(e) => { e.preventDefault(); choose(option); }}
+              onMouseEnter={() => setActive(index)}
+              className={`cursor-pointer px-3 py-2 text-sm ${index === active ? 'bg-[#e8f1fb]' : ''}`}
+            >
+              <span className="block font-semibold text-slate-900">{option.label}</span>
+              <span className="block text-xs text-slate-500">{option.hint}</span>
+            </li>
+          ))}
+          {!matches.length ? <li className="px-3 py-2 text-sm text-slate-500">Không có booking phù hợp.</li> : null}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusBadge({ done, label }: { done: boolean; label: string }) {
   return (
     <span
@@ -56,7 +128,15 @@ export function ResidenceDesk({
 }: {
   propertyId: Id<'properties'>;
 }) {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  // Unfiltered rows drive "who still needs a declaration"; the searched rows drive the table.
   const rows = useQuery(api.residence.listForProperty, { propertyId });
+  const found = useQuery(api.residence.listForProperty, debounced ? { propertyId, search: debounced } : 'skip');
   const bookings = useQuery(api.residence.bookingOptions, { propertyId });
   const [initialBooking, setInitialBooking] = useState('');
   const verify = useMutation(api.residence.verifyRegistration);
@@ -66,12 +146,17 @@ export function ResidenceDesk({
   const [statusRow, setStatusRow] = useState<RecordRow | null>(null);
   const [error, setError] = useState('');
   if (!rows) return <Spinner label="Đang tải danh sách lưu trú…" />;
-  const declarations = rows.filter((row) => row.registrationType === 'tam_tru');
+  const shown = (debounced ? found : rows) ?? [];
+  const allDeclarations = rows.filter((row) => row.registrationType === 'tam_tru');
+  const declarations = shown.filter((row) => row.registrationType === 'tam_tru');
   const longStayRows = declarations.filter((row) => row.longStay);
+  const needle = foldText(debounced);
   const pendingBookings = longStay
     ? []
     : (bookings?.filter(
-        (b) => b.adults > declarations.filter((r) => r.bookingId === b.id).length,
+        (b) =>
+          b.adults > allDeclarations.filter((r) => r.bookingId === b.id).length &&
+          (!needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle)),
       ) ?? []);
   const empty = longStay
     ? !longStayRows.length
@@ -114,9 +199,17 @@ export function ResidenceDesk({
           </button>
         )}
       </div>
-      <h2 className="font-bold">
-        {longStay ? 'Danh sách tạm trú (booking dài hạn)' : 'Danh sách khách lưu trú'}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-bold">
+          {longStay ? 'Danh sách tạm trú (booking dài hạn)' : 'Danh sách khách lưu trú'}
+        </h2>
+        <label className="relative w-full max-w-sm">
+          <span className="sr-only">Tìm booking, tên khách hoặc số giấy tờ</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <input type="search" className="field-input pl-9" placeholder="Tìm booking, tên khách, số CCCD…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
+      </div>
+      {debounced && found === undefined ? <p className="text-sm text-slate-500">Đang tìm…</p> : null}
       {error && <p role="alert" className="text-red-700">{error}</p>}
       <div className="overflow-x-auto">
         <table
@@ -236,7 +329,7 @@ export function ResidenceDesk({
         <p className="p-4 text-center text-slate-500">
           {longStay
             ? 'Chưa có khách lưu trú dài hạn. Khách cần có bản ghi khai báo lưu trú trước.'
-            : 'Chưa có bản ghi.'}
+            : debounced ? `Không tìm thấy kết quả cho “${debounced}”.` : 'Chưa có bản ghi.'}
         </p>
       )}
       {form && (
@@ -426,29 +519,18 @@ function RegistrationForm({
         <p className="text-sm sm:col-span-2">
           Mã bản ghi · {editing?.recordCode ?? 'Tự động tạo khi lưu'}
         </p>
-        <label className="sm:col-span-2">
-          Mã Booking
-          <select
-            className="field-input"
-            required
-            disabled={Boolean(editing)}
-            value={selection}
-            onChange={(e) => setSelection(e.target.value)}
-          >
-            <option value="">Chọn booking</option>
-            {editing ? (
-              <option value={selection}>
-                {editing.confirmationCode} · {editing.fullName}
-              </option>
-            ) : (
-              options?.map((b) => (
-                <option value={b.id} key={b.id}>
-                  {b.code} · {b.name}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
+        <div className="sm:col-span-2">
+          <span id="booking-picker-label">Mã Booking</span>
+          {editing ? (
+            <input className="field-input" disabled value={`${editing.confirmationCode} · ${editing.fullName}`} aria-labelledby="booking-picker-label" />
+          ) : (
+            <BookingPicker
+              options={(options ?? []).map((b) => ({ id: b.id, label: `${b.code} · ${b.name}`, hint: `${b.unit ?? ''} · ${b.start} → ${b.end}` }))}
+              value={selection}
+              onChange={setSelection}
+            />
+          )}
+        </div>
         {booking && !editing ? (
           <p className="rounded bg-blue-50 p-3 sm:col-span-2">
             Người đặt: {booking.name} · Cơ sở: {booking.unit}

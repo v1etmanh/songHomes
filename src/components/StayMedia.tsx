@@ -18,8 +18,8 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
     ? consensusCommonsMedia.map((image, index) => ({ ...image, src: photoUrls[index] ?? image.src }))
     : photoUrls.map((src, index) => ({
       src,
-      alt: `${propertyName} property photo ${index + 1}`,
-      caption: `${propertyName} — photo ${index + 1}`,
+      alt: `${propertyName} — ảnh ${index + 1}`,
+      caption: '',
     }));
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -59,7 +59,7 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
               return (
                 <a
                   key={amenity}
-                  className="badge inline-flex items-center gap-1.5 bg-stone-100 text-stone-700 transition hover:-translate-y-0.5 hover:bg-amber-100 hover:text-amber-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#e3eefa] px-3 py-1 text-xs font-semibold text-[#1565a8] transition hover:-translate-y-0.5 hover:bg-[#d2e4f7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565a8]"
                   href={action.href}
                   target="_blank"
                   rel="noreferrer"
@@ -75,7 +75,7 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
                 <button
                   key={amenity}
                   type="button"
-                  className="badge inline-flex items-center gap-1.5 bg-stone-100 text-stone-700 transition hover:-translate-y-0.5 hover:bg-amber-100 hover:text-amber-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#e3eefa] px-3 py-1 text-xs font-semibold text-[#1565a8] transition hover:-translate-y-0.5 hover:bg-[#d2e4f7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565a8]"
                   onClick={(event) => openGallery(action.imageIndex, event.currentTarget)}
                 >
                   {amenity}
@@ -83,7 +83,7 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
                 </button>
               );
             }
-            return <span key={amenity} className="badge bg-stone-100 text-stone-700">{amenity}</span>;
+            return <span key={amenity} className="rounded-full bg-[#e3eefa] px-3 py-1 text-xs font-semibold text-[#1565a8]">{amenity}</span>;
           })}
         </div>
       ) : null}
@@ -92,8 +92,14 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
         <section className="mt-7" aria-labelledby="stay-gallery-title">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">{isConsensusCommons ? 'Inside the commons' : 'Không gian lưu trú'}</p>
-              <h2 id="stay-gallery-title" className="mt-1 font-display text-xl font-semibold text-stone-900">{isConsensusCommons ? 'A fictional stay, made tangible' : `Hình ảnh ${propertyName}`}</h2>
+              {isConsensusCommons ? (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1565a8]">Inside the commons</p>
+                  <h2 id="stay-gallery-title" className="mt-1 text-xl font-semibold text-stone-900">A fictional stay, made tangible</h2>
+                </>
+              ) : (
+                <h2 id="stay-gallery-title" className="text-xs font-bold uppercase tracking-[0.18em] text-[#1565a8]">Không gian lưu trú</h2>
+              )}
             </div>
             {isConsensusCommons ? <p className="text-xs text-stone-500">Concept imagery · no real property or guest data</p> : null}
           </div>
@@ -102,12 +108,12 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
               <button
                 key={image.src}
                 type="button"
-                className="group relative aspect-[4/3] overflow-hidden rounded-2xl bg-stone-200 text-left shadow-sm ring-1 ring-stone-900/10 transition hover:-translate-y-1 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                className="group relative aspect-[4/3] overflow-hidden rounded-2xl bg-stone-200 text-left shadow-sm ring-1 ring-stone-900/10 transition hover:-translate-y-1 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565a8]"
                 onClick={(event) => openGallery(index, event.currentTarget)}
-                aria-label={`Open property photo: ${image.caption}`}
+                aria-label={`Mở ảnh ${index + 1}`}
               >
                 <img className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" src={image.src} alt={image.alt} loading={index === 0 ? 'eager' : 'lazy'} />
-                <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950/90 via-stone-950/55 to-transparent px-4 pb-3 pt-10 text-sm font-medium text-white">{image.caption}</span>
+                {image.caption ? <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950/90 via-stone-950/55 to-transparent px-4 pb-3 pt-10 text-sm font-medium text-white">{image.caption}</span> : null}
               </button>
             ))}
           </div>
@@ -126,8 +132,8 @@ export function StayMedia({ propertySlug, propertyName, amenities, photoUrls }: 
             <img className="max-h-[78vh] w-full object-contain" src={media[activeIndex].src} alt={media[activeIndex].alt} />
             <div className="flex items-center justify-between gap-3 px-5 py-4">
               <div>
-                <p className="font-medium">{media[activeIndex].caption}</p>
-                <p className="mt-0.5 text-xs text-stone-400">{activeIndex + 1} of {media.length}</p>
+                {media[activeIndex].caption ? <p className="font-medium">{media[activeIndex].caption}</p> : null}
+                <p className="mt-0.5 text-xs text-stone-400">{activeIndex + 1} / {media.length}</p>
               </div>
               <div className="flex gap-2">
                 <button type="button" className="rounded-full border border-white/20 p-2 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" onClick={() => move(-1)} aria-label="Previous property photo"><ChevronLeft aria-hidden="true" /></button>

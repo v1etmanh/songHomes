@@ -62,6 +62,8 @@ export const bySlug = query({
           policies: t.policies,
           amenities: t.amenities,
           comingSoon: t.comingSoon,
+          longStay: t.longStay === true,
+          monthlyPriceCents: t.monthlyPriceCents ?? null,
           fromPriceCents: rateByUnitType.get(t._id)?.baseNightlyCents ?? null,
         })),
       addOns: addOns.map((addOn) => ({
@@ -172,6 +174,8 @@ export const unitTypeBySlug = query({
         policies: unitType.policies,
         amenities: unitType.amenities,
         comingSoon: unitType.comingSoon,
+        longStay: unitType.longStay === true,
+        monthlyPriceCents: unitType.monthlyPriceCents ?? null,
       },
       ratePlan: ratePlan
         ? {

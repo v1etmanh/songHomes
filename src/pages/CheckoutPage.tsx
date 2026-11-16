@@ -85,8 +85,8 @@ export function CheckoutPage() {
   if (booking.status !== 'hold') {
     return (
       <div className="card p-8 text-center">
-        <h1 className="text-2xl font-semibold text-stone-900">This hold is no longer active</h1>
-        <p className="mt-2 text-stone-500">Status: {booking.status.replace('_', ' ')}</p>
+        <h1 className="text-2xl font-semibold text-slate-900">This hold is no longer active</h1>
+        <p className="mt-2 text-slate-500">Status: {booking.status.replace('_', ' ')}</p>
       </div>
     );
   }
@@ -226,10 +226,10 @@ export function CheckoutPage() {
   return (
     <div className="mx-auto max-w-lg">
       <div className="card p-8">
-        <h1 className="text-2xl font-semibold text-stone-900">{isSong ? 'Kiểm tra và gửi yêu cầu đặt phòng' : 'Complete your booking'}</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">{isSong ? 'Kiểm tra và gửi yêu cầu đặt phòng' : 'Complete your booking'}</h1>
         {PUBLIC_SHOWCASE.enabled ? <FictionalBookingNotice /> : null}
 
-        <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-amber-800">
+        <div className="mt-4 flex items-center gap-2 rounded-lg bg-sky-50 px-4 py-3 text-sky-800">
           <Clock className="h-4 w-4" aria-hidden="true" />
           {expired ? (
             <span className="text-sm font-medium">{isSong ? 'Thời gian giữ lịch đã hết. Vui lòng chọn lại.' : 'Your hold has expired. Please start over.'}</span>
@@ -238,10 +238,10 @@ export function CheckoutPage() {
           )}
         </div>
 
-        <dl className="mt-6 space-y-1 text-sm text-stone-600">
+        <dl className="mt-6 space-y-1 text-sm text-slate-600">
           <div className="flex justify-between">
             <dt>{isSong ? 'Chỗ nghỉ' : 'Stay'}</dt>
-            <dd className="font-medium text-stone-900">{booking.unitTypeName}</dd>
+            <dd className="font-medium text-slate-900">{booking.unitTypeName}</dd>
           </div>
           <div className="flex justify-between">
             <dt>{isSong ? 'Nhận phòng' : 'Check-in'}</dt>
@@ -254,7 +254,7 @@ export function CheckoutPage() {
         </dl>
 
         {booking.priceBreakdown ? (
-          <div className="mt-6 border-t border-stone-200 pt-6">
+          <div className="mt-6 border-t border-slate-200 pt-6">
             <PriceBreakdownView price={booking.priceBreakdown} nights={booking.nights} currency={booking.currency} taxLabel={booking.taxLabel} />
           </div>
         ) : null}
@@ -310,7 +310,7 @@ export function CheckoutPage() {
             <button type="button" className="btn-primary mt-6 w-full" disabled={expired || paying} onClick={() => void handlePayAtProperty()}>
               {payingProvider === 'pay_at_property' ? 'Đang gửi yêu cầu…' : isSong ? 'Gửi yêu cầu đặt phòng' : 'Xác nhận đặt phòng — thanh toán tại chỗ'}
             </button>
-            <p className="mt-2 text-center text-xs text-stone-500">Không thanh toán trực tuyến. Yêu cầu sẽ khóa lịch và ở trạng thái Chờ xác nhận cho đến khi nhân viên Sóng Homestay xử lý.</p>
+            <p className="mt-2 text-center text-xs text-slate-500">Không thanh toán trực tuyến. Yêu cầu sẽ khóa lịch và ở trạng thái Chờ xác nhận cho đến khi nhân viên Sóng Homestay xử lý.</p>
           </>
         ) : demoMode ? (
           <>
@@ -322,7 +322,7 @@ export function CheckoutPage() {
             >
               {paying ? 'Processing…' : 'Complete demo payment'}
             </button>
-            <p className="mt-2 text-center text-xs text-stone-400">
+            <p className="mt-2 text-center text-xs text-slate-400">
               Demo mode — no real charge. Payment state still follows the same booking ledger.
             </p>
           </>
@@ -333,12 +333,12 @@ export function CheckoutPage() {
         ) : providerInfo.providers.length === 0
           && !wavelengthInfo?.available
           && !simulatedEnabled ? (
-          <div className="mt-6 rounded-lg bg-stone-50 px-4 py-3 text-sm text-stone-600">
+          <div className="mt-6 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Online payment isn't configured for this property yet.{' '}
             {property ? (
               <>
                 Please contact them at{' '}
-                <a className="font-medium text-emerald-700 underline" href={`mailto:${property.email}`}>
+                <a className="font-medium text-sky-700 underline" href={`mailto:${property.email}`}>
                   {property.email}
                 </a>{' '}
                 or {property.phone} to complete your booking.
@@ -386,7 +386,7 @@ export function CheckoutPage() {
                 ? 'Processing…'
                 : 'Take the simulated tour'}
             </button>
-            <p className="mt-2 text-center text-xs text-stone-500">
+            <p className="mt-2 text-center text-xs text-slate-500">
               No charge and no signet reward. The booking ledger and receipt
               flow still run.
             </p>
@@ -417,14 +417,14 @@ export function CheckoutPage() {
           && PUBLIC_SHOWCASE.allowLiveWavelength
           && wavelengthInfo !== undefined
           && !wavelengthInfo.available ? (
-          <p role="status" className="mt-3 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-600">
+          <p role="status" className="mt-3 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">
             Live Wavelength is temporarily unavailable because the signet
             merchant bridge is not healthy. Zaprite and the simulated tour
             remain independent.
           </p>
         ) : null}
         {!isSong && wavelengthInfo?.available && PUBLIC_SHOWCASE.allowLiveWavelength && (
-          <p className="mt-2 text-center text-xs text-stone-500">
+          <p className="mt-2 text-center text-xs text-slate-500">
             Signet test sats · fixed hackathon quote · self-custodial
           </p>
         )}

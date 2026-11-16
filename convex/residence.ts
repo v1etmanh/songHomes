@@ -11,9 +11,9 @@ const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 /** Stays of this many nights or more need a tạm trú registration with the authorities. */
 export const LONG_STAY_NIGHTS = 30;
 
-/** Long stay = booked in a unit type marketed as dài hạn, or simply long enough. */
-export function isLongStay(unitType: Pick<Doc<'unitTypes'>, 'name' | 'slug'> | null | undefined, checkIn: string, checkOut: string) {
-  const marked = unitType ? /dai-han/.test(unitType.slug) || /dài hạn/i.test(unitType.name) : false;
+/** Long stay = booked in a long-term unit type (flag, or legacy dài hạn naming), or simply long enough. */
+export function isLongStay(unitType: Pick<Doc<'unitTypes'>, 'name' | 'slug' | 'longStay'> | null | undefined, checkIn: string, checkOut: string) {
+  const marked = unitType ? unitType.longStay === true || /dai-han/.test(unitType.slug) || /dài hạn/i.test(unitType.name) : false;
   return marked || (isIsoDate(checkIn.slice(0, 10)) && isIsoDate(checkOut.slice(0, 10)) && daysBetween(checkIn.slice(0, 10), checkOut.slice(0, 10)) >= LONG_STAY_NIGHTS);
 }
 const documentTypeArg = v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other'));
@@ -379,6 +379,8 @@ export const listForProperty = query({
   args: {
     propertyId: v.optional(v.id('properties')),
     exportFull: v.optional(v.boolean()),
+    // Matches booking code, guest name, unit, or document number (full number only for staff who may reveal it).
+    search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let propertyId: Id<'properties'> | undefined = args.propertyId;
@@ -419,9 +421,18 @@ export const listForProperty = query({
       .collect();
     const unitTypeById = new Map(unitTypes.map((t) => [t._id, t]));
 
+    const needle = (args.search ?? '').trim().toLowerCase();
+    const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
     const result = [];
     for (const row of rows) {
       const booking = await ctx.db.get(row.bookingId);
+      if (needle) {
+        const unitName = booking ? (unitNameById.get(booking.unitId) ?? '') : '';
+        const doc = row.documentNumber.toLowerCase();
+        const docHit = canReveal ? doc.includes(needle) : needle.length <= 4 && doc.endsWith(needle);
+        const textHit = [row.fullName, booking?.confirmationCode ?? '', unitName, row.recordCode ?? ''].some((value) => fold(value).includes(fold(needle)));
+        if (!docHit && !textHit) continue;
+      }
       result.push({
         _id: row._id, bookingId: row.bookingId, fullName: row.fullName, nationality: row.nationality,
         documentType: row.documentType, documentNumber: args.exportFull ? row.documentNumber : '••••' + row.documentNumber.slice(-4),
