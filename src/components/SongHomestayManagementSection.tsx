@@ -32,9 +32,8 @@ type Catalog = {
 const sourceLabels = {
   zalo: 'Zalo',
   facebook: 'Facebook',
-  phone: 'Điện thoại',
-  walk_in: 'Khách vãng lai',
-  other: 'Nguồn khác',
+  phone: 'Phone',
+  other: 'Khác',
 } as const;
 
 export function SongHomestayManagementSection({ propertyId, initialTab = 'booking', showTabs = true, onBookingCreated }: { propertyId: Id<'properties'>; initialTab?: 'booking' | 'units' | 'services'; showTabs?: boolean; onBookingCreated?: (confirmationCode: string) => void }) {

@@ -1,18 +1,19 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, CheckCircle2, Clock3, Copy, ExternalLink, Inbox, Mail, RefreshCw, Shuffle, Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { AlertTriangle, CheckCircle2, Clock3, Copy, ExternalLink, Inbox, Mail, PlugZap, RefreshCw, Shuffle, Unplug, Zap } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { extractErrorMessage } from './ErrorMessage';
 import { Spinner } from './Spinner';
+import { shortDate, shortDateTime } from '../lib/songBookingStatus';
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000;
 const PLATFORM_BY_LABEL: Record<string, 'airbnb' | 'booking'> = { Airbnb: 'airbnb', 'Booking.com': 'booking' };
 
 function formatTime(ts: number | null | undefined): string {
   if (!ts) return '—';
-  return new Date(ts).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+  return shortDateTime(ts, 'Asia/Ho_Chi_Minh');
 }
 
 function useBusy() {
@@ -33,7 +34,15 @@ function useBusy() {
   return { busy, message, run };
 }
 
-export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
+const HUB_TABS = { inbox: 'Hộp thư cảnh báo', history: 'Lịch sử đồng bộ', settings: 'Cài đặt', manual: 'Nhập tệp .ics' } as const;
+type HubTab = keyof typeof HUB_TABS;
+
+/**
+ * Compact iCal hub: one summary bar, one feed table (a row per link instead of
+ * a card per stay), and the secondary panels behind tabs (?tab=… keeps each
+ * one deep-linkable, convention #12).
+ */
+export function IcalSyncHub({ propertyId, manualImport }: { propertyId: Id<'properties'>; manualImport?: ReactNode }) {
   const overview = useQuery(api.icalAlerts.feedOverview, { propertyId });
   const sim = useQuery(api.otaSimulator.status, {});
   const runs = useQuery(api.icalAlerts.listRuns, { propertyId });
@@ -42,6 +51,10 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
   const connect = useMutation(api.otaSimulator.connect);
   const setListingActive = useMutation(api.otaSimulator.setListingActive);
   const { busy, message, run } = useBusy();
+  const [params, setParams] = useSearchParams();
+  const rawTab = params.get('tab') ?? '';
+  const tabs = (Object.keys(HUB_TABS) as HubTab[]).filter((key) => key !== 'manual' || manualImport);
+  const tab: HubTab = (tabs as string[]).includes(rawTab) ? rawTab as HubTab : 'inbox';
 
   if (overview === undefined || sim === undefined || runs === undefined) return <Spinner label="Đang tải trạng thái đồng bộ…" />;
 
@@ -52,19 +65,17 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
   // Units with no simulated feed attached (added after the first connect, or whose iCal links were cleared) need a reconnect.
   const unitsWithoutSim = sim.enabled ? overview.filter((unit) => !unit.feeds.some((feed) => listingForUrl(feed.url))).length : 0;
   const nextCron = runs.lastCronAt ? runs.lastCronAt + SYNC_INTERVAL_MS : null;
+  const iconButton = 'grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-[#1565a8] disabled:opacity-50';
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-extrabold text-[#10234a]">Đồng bộ lịch OTA qua iCal</h2>
-            <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-              <span className="inline-flex items-center gap-1"><Clock3 className="h-4 w-4" />Tự động mỗi 30 phút</span>
-              <span>Lần tự động gần nhất: <strong className="text-slate-700">{formatTime(runs.lastCronAt)}</strong></span>
-              <span>Lần kế tiếp dự kiến: <strong className="text-slate-700">{nextCron ? formatTime(nextCron) : 'trong vòng 30 phút'}</strong></span>
-            </p>
-            <p className="mt-1 text-sm text-slate-500">{totalFeeds} link iCal đang theo dõi{failing ? <span className="font-bold text-red-600"> · {failing} link đang lỗi</span> : null}</p>
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-500">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-[#10234a]"><Clock3 className="h-4 w-4 text-[#1565a8]" />Tự động mỗi 30 phút</span>
+            <span className="whitespace-nowrap">Gần nhất: <strong className="text-slate-700">{formatTime(runs.lastCronAt)}</strong></span>
+            <span className="whitespace-nowrap">Kế tiếp: <strong className="text-slate-700">{nextCron ? formatTime(nextCron) : 'trong 30 phút'}</strong></span>
+            <span className="whitespace-nowrap">{totalFeeds} link{failing ? <strong className="text-red-600"> · {failing} lỗi</strong> : null}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {sim.enabled ? <a className="btn-secondary" href="/sim" target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" />Nền tảng giả lập</a> : null}
@@ -82,108 +93,106 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
           </div>
         </div>
         {sim.enabled && (!sim.connected || unitsWithoutSim > 0) ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <span>{sim.connected ? `Còn ${unitsWithoutSim} cơ sở chưa gắn link iCal giả lập. Kết nối lại sẽ tạo và gắn link Airbnb và Booking.com (mô phỏng) cho các cơ sở còn thiếu.` : 'Chưa kết nối nền tảng giả lập. Kết nối sẽ tạo link iCal Airbnb và Booking.com (mô phỏng) cho từng cơ sở.'}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-[#10234a]">
+            <span>{sim.connected ? `Còn ${unitsWithoutSim} cơ sở chưa gắn link iCal giả lập.` : 'Chưa kết nối nền tảng giả lập.'}</span>
             <button type="button" className="btn-primary" disabled={busy !== null} onClick={() => void run('connect', async () => {
               const r = await connect({});
               return `Đã kết nối ${r.listings} link iCal giả lập. Bấm "Đồng bộ tất cả ngay" để kéo dữ liệu về.`;
-            })}>{sim.connected ? 'Kết nối lại nền tảng giả lập' : 'Kết nối nền tảng giả lập'}</button>
+            })}>{sim.connected ? 'Kết nối lại' : 'Kết nối nền tảng giả lập'}</button>
           </div>
         ) : null}
-        {totalFeeds === 0 && !sim.enabled ? <p className="mt-4 text-sm text-slate-500">Chưa có link iCal nào. Thêm link .ics cho từng chỗ nghỉ trong Quản lý chỗ nghỉ để bật đồng bộ.</p> : null}
-        {message ? <p role="status" className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{message}</p> : null}
+        {totalFeeds === 0 && !sim.enabled ? <p className="mt-3 text-sm text-slate-500">Chưa có link iCal nào. Thêm link .ics cho từng chỗ nghỉ trong Quản lý chỗ nghỉ để bật đồng bộ.</p> : null}
+        {message ? <p role="status" className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{message}</p> : null}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {overview.map((unit) => (
-          <article key={unit.unitId} className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-            <h3 className="font-extrabold text-[#10234a]">{unit.name}</h3>
-            {unit.feeds.length === 0 ? <p className="mt-3 text-sm text-slate-400">Chưa có link iCal.</p> : null}
-            <div className="mt-3 space-y-3">
-              {unit.feeds.map((feed) => {
-                const listing = listingForUrl(feed.url);
-                const platform = PLATFORM_BY_LABEL[feed.label];
-                const key = `${unit.unitId}:${feed.label}`;
-                const state = !feed.lastRun ? 'idle' : feed.lastRun.ok ? 'ok' : 'error';
-                return (
-                  <div key={feed.url} className="rounded-xl border border-slate-100 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-md px-2 py-0.5 text-xs font-bold text-white ${platform === 'airbnb' ? 'bg-rose-500' : platform === 'booking' ? 'bg-blue-800' : 'bg-slate-500'}`}>{feed.label}</span>
-                        {state === 'ok' ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Đã đồng bộ</span> : null}
-                        {state === 'error' ? <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600"><AlertTriangle className="h-4 w-4" />Lỗi đồng bộ</span> : null}
-                        {state === 'idle' ? <span className="text-xs font-bold text-slate-400">Chưa đồng bộ</span> : null}
-                      </div>
-                      <span className="text-xs text-slate-500">{formatTime(feed.lastSyncedAt)}</span>
-                    </div>
-                    {feed.lastRun?.ok ? (
-                      <p className="mt-2 text-xs text-slate-600">Mới {feed.lastRun.inserted} · Cập nhật {feed.lastRun.updated} · Hủy {feed.lastRun.removed} · <span className={feed.lastRun.conflicts ? 'font-bold text-red-600' : ''}>Xung đột {feed.lastRun.conflicts}</span></p>
-                    ) : null}
-                    {feed.lastRun && !feed.lastRun.ok ? <p className="mt-2 text-xs text-red-600">{feed.lastRun.error}</p> : null}
-                    {listing && !listing.active ? <p className="mt-2 text-xs font-semibold text-amber-700">Listing giả lập đang tắt nên link trả 404.</p> : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 disabled:opacity-50" disabled={busy !== null} onClick={() => void run(key, async () => {
-                        const r = await syncFeed({ propertyId, unitId: unit.unitId, label: feed.label });
-                        return r.ok ? `${unit.name} · ${feed.label}: mới ${r.inserted}, cập nhật ${r.updated}, hủy ${r.removed}, xung đột ${r.conflicts}.` : `${unit.name} · ${feed.label}: lỗi ${r.error}`;
-                      })}>
-                        <RefreshCw className={`mr-1 inline h-3.5 w-3.5 ${busy === key ? 'animate-spin' : ''}`} />Đồng bộ ngay
-                      </button>
-                      {listing ? (
-                        <a className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700" href={`/sim/${listing.platform}?unit=${encodeURIComponent(unit.slug)}`} target="_blank" rel="noreferrer">
-                          <ExternalLink className="mr-1 inline h-3.5 w-3.5" />Mở trên {feed.label}
-                        </a>
-                      ) : null}
-                      <button type="button" className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700" onClick={() => void navigator.clipboard?.writeText(feed.url)}>
-                        <Copy className="mr-1 inline h-3.5 w-3.5" />Copy link
-                      </button>
-                      {listing ? (
-                        <button type="button" className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800" disabled={busy !== null} onClick={() => void run(`toggle:${listing.listingId}`, async () => {
-                          await setListingActive({ listingId: listing.listingId, active: !listing.active });
-                        })}>
-                          {listing.active ? 'Giả lập link lỗi' : 'Bật lại link'}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
-        <AlertInbox propertyId={propertyId} />
-        <div className="space-y-5">
-          <AlertSettings propertyId={propertyId} />
-          {sim.enabled && sim.connected ? <SimulationControls /> : null}
-        </div>
-      </div>
-
       <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
-        <h2 className="p-5 font-extrabold text-[#10234a]">Lịch sử đồng bộ</h2>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-left text-sm">
+          <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr><th className="p-3">Thời gian</th><th className="p-3">Cơ sở</th><th className="p-3">Nguồn</th><th className="p-3">Kiểu</th><th className="p-3">Kết quả</th></tr>
+              <tr><th className="p-3">Chỗ nghỉ</th><th className="p-3">Kênh</th><th className="p-3">Trạng thái</th><th className="p-3">Lần cuối</th><th className="p-3">Kết quả</th><th className="p-3 text-right">Thao tác</th></tr>
             </thead>
             <tbody>
-              {runs.runs.map((r) => (
-                <tr key={r._id} className="border-t border-slate-100">
-                  <td className="p-3">{formatTime(r.ts)}</td>
-                  <td className="p-3">{r.unitName}</td>
-                  <td className="p-3">{r.label}</td>
-                  <td className="p-3">{r.trigger === 'cron' ? 'Tự động' : 'Thủ công'}</td>
-                  <td className="p-3">{r.ok
-                    ? <span className="text-slate-700">Mới {r.inserted} · Cập nhật {r.updated} · Hủy {r.removed}{r.newConflicts ? <strong className="text-red-600"> · {r.newConflicts} xung đột mới</strong> : null}</span>
-                    : <span className="font-semibold text-red-600">Lỗi: {r.error}</span>}</td>
-                </tr>
-              ))}
-              {!runs.runs.length ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Chưa có lần đồng bộ nào.</td></tr> : null}
+              {overview.map((unit) => {
+                const feeds = unit.feeds.length ? unit.feeds : [null];
+                return feeds.map((feed, index) => {
+                  const first = index === 0;
+                  const nameCell = first ? <td rowSpan={feeds.length} className="min-w-52 border-r border-slate-100 p-3 align-top font-bold text-[#10234a] !whitespace-normal">{unit.name}</td> : null;
+                  if (!feed) return <tr key={`${unit.unitId}:none`} className="border-t border-slate-100">{nameCell}<td colSpan={5} className="p-3 text-slate-400">Chưa có link iCal.</td></tr>;
+                  const listing = listingForUrl(feed.url);
+                  const platform = PLATFORM_BY_LABEL[feed.label];
+                  const key = `${unit.unitId}:${feed.label}`;
+                  const state = !feed.lastRun ? 'idle' : feed.lastRun.ok ? 'ok' : 'error';
+                  return (
+                    <tr key={feed.url} className={first ? 'border-t border-slate-100' : 'border-t border-slate-50'}>
+                      {nameCell}
+                      <td className="p-3"><span className={`rounded-md px-2 py-0.5 text-xs font-bold text-white ${platform === 'airbnb' ? 'bg-rose-500' : platform === 'booking' ? 'bg-blue-800' : 'bg-slate-500'}`}>{feed.label}</span></td>
+                      <td className="p-3">
+                        {state === 'ok' ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Đã đồng bộ</span> : null}
+                        {state === 'error' ? <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600" title={feed.lastRun?.error ?? undefined}><AlertTriangle className="h-4 w-4" />Lỗi đồng bộ</span> : null}
+                        {state === 'idle' ? <span className="text-xs font-bold text-slate-400">Chưa đồng bộ</span> : null}
+                        {listing && !listing.active ? <span className="ml-2 text-xs font-semibold text-red-600">· link tắt</span> : null}
+                      </td>
+                      <td className="p-3 text-xs text-slate-500">{formatTime(feed.lastSyncedAt)}</td>
+                      <td className="p-3 text-xs text-slate-600">{feed.lastRun?.ok ? <>Mới {feed.lastRun.inserted} · Cập nhật {feed.lastRun.updated} · Hủy {feed.lastRun.removed} · <span className={feed.lastRun.conflicts ? 'font-bold text-red-600' : ''}>Trùng {feed.lastRun.conflicts}</span></> : feed.lastRun ? <span className="text-red-600">{feed.lastRun.error}</span> : '—'}</td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" className={iconButton} title="Đồng bộ ngay" aria-label={`Đồng bộ ngay ${unit.name} · ${feed.label}`} disabled={busy !== null} onClick={() => void run(key, async () => {
+                            const r = await syncFeed({ propertyId, unitId: unit.unitId, label: feed.label });
+                            return r.ok ? `${unit.name} · ${feed.label}: mới ${r.inserted}, cập nhật ${r.updated}, hủy ${r.removed}, xung đột ${r.conflicts}.` : `${unit.name} · ${feed.label}: lỗi ${r.error}`;
+                          })}><RefreshCw className={`h-4 w-4 ${busy === key ? 'animate-spin' : ''}`} /></button>
+                          {listing ? <a className={iconButton} title={`Mở trên ${feed.label}`} aria-label={`Mở trên ${feed.label}`} href={`/sim/${listing.platform}?unit=${encodeURIComponent(unit.slug)}`} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /></a> : null}
+                          <button type="button" className={iconButton} title="Copy link" aria-label={`Copy link ${feed.label}`} onClick={() => void navigator.clipboard?.writeText(feed.url)}><Copy className="h-4 w-4" /></button>
+                          {listing ? <button type="button" className={iconButton} title={listing.active ? 'Giả lập link lỗi' : 'Bật lại link'} aria-label={listing.active ? 'Giả lập link lỗi' : 'Bật lại link'} disabled={busy !== null} onClick={() => void run(`toggle:${listing.listingId}`, async () => {
+                            await setListingActive({ listingId: listing.listingId, active: !listing.active });
+                          })}>{listing.active ? <Unplug className="h-4 w-4" /> : <PlugZap className="h-4 w-4" />}</button> : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                });
+              })}
             </tbody>
           </table>
         </div>
       </section>
+
+      <section className="rounded-2xl border border-sky-100 bg-white shadow-sm">
+        <div role="tablist" aria-label="Thông tin đồng bộ" className="flex flex-wrap gap-1 border-b border-slate-100 px-3 pt-3">
+          {tabs.map((key) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setParams((prev) => { const next = new URLSearchParams(prev); if (key === 'inbox') next.delete('tab'); else next.set('tab', key); return next; }, { replace: true })} className={`-mb-px whitespace-nowrap border-b-2 px-3 pb-2.5 text-sm font-bold transition ${tab === key ? 'border-[#1565a8] text-[#0b2e4f]' : 'border-transparent text-slate-500 hover:text-[#0b2e4f]'}`}>{HUB_TABS[key]}</button>)}
+        </div>
+        <div className="p-4">
+          {tab === 'inbox' ? <AlertInbox propertyId={propertyId} /> : null}
+          {tab === 'history' ? <SyncHistory runs={runs.runs} /> : null}
+          {tab === 'settings' ? <div className="grid gap-4 lg:grid-cols-2"><AlertSettings propertyId={propertyId} />{sim.enabled && sim.connected ? <SimulationControls /> : null}</div> : null}
+          {tab === 'manual' ? manualImport : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SyncHistory({ runs }: { runs: Array<{ _id: string; ts: number; unitName: string; label: string; trigger: string; ok: boolean; inserted: number; updated: number; removed: number; newConflicts?: number; error?: string }> }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr><th className="p-3">Thời gian</th><th className="p-3">Cơ sở</th><th className="p-3">Nguồn</th><th className="p-3">Kiểu</th><th className="p-3">Kết quả</th></tr>
+        </thead>
+        <tbody>
+          {runs.map((r) => (
+            <tr key={r._id} className="border-t border-slate-100">
+              <td className="p-3">{formatTime(r.ts)}</td>
+              <td className="p-3 !whitespace-normal">{r.unitName}</td>
+              <td className="p-3">{r.label}</td>
+              <td className="p-3">{r.trigger === 'cron' ? 'Tự động' : 'Thủ công'}</td>
+              <td className="p-3">{r.ok
+                ? <span className="text-slate-700">Mới {r.inserted} · Cập nhật {r.updated} · Hủy {r.removed}{r.newConflicts ? <strong className="text-red-600"> · {r.newConflicts} xung đột mới</strong> : null}</span>
+                : <span className="font-semibold text-red-600">Lỗi: {r.error}</span>}</td>
+            </tr>
+          ))}
+          {!runs.length ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Chưa có lần đồng bộ nào.</td></tr> : null}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -200,12 +209,12 @@ function AlertInbox({ propertyId }: { propertyId: Id<'properties'> }) {
   const markAllRead = useMutation(api.icalAlerts.markAllRead);
   if (inbox === undefined) return <Spinner label="Đang tải hộp thư…" />;
   return (
-    <section className="rounded-2xl border border-sky-100 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+    <section>
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
         <h2 className="flex items-center gap-2 font-extrabold text-[#10234a]"><Inbox className="h-5 w-5" />Hộp thư cảnh báo{inbox.unread ? <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">{inbox.unread} chưa đọc</span> : null}</h2>
         {inbox.unread ? <button type="button" className="text-sm font-bold text-blue-700" onClick={() => void markAllRead({ propertyId })}>Đánh dấu đã đọc tất cả</button> : null}
       </div>
-      <p className="mx-5 mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">Mỗi cảnh báo cũng được gửi email tới danh sách nhân viên bên cạnh. Trên bản demo, email chỉ được ghi log; nội dung dưới đây đúng là email sẽ gửi đi.</p>
+      <p className="mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">Mỗi cảnh báo cũng được gửi email tới danh sách nhân viên bên cạnh. Trên bản demo, email chỉ được ghi log; nội dung dưới đây đúng là email sẽ gửi đi.</p>
       <ul className="divide-y divide-slate-100">
         {inbox.alerts.map((alert) => {
           const style = KIND_STYLE[alert.kind];
@@ -268,7 +277,7 @@ function AlertSettingsForm({ propertyId, settings }: {
           {[0, 0.2, 0.35, 0.5, 0.8].map((value) => <option key={value} value={value}>{Math.round(value * 100)}%</option>)}
         </select>
       </label>
-      {settings.lastRandomizedOn ? <p className="mt-2 text-xs text-slate-500">Lần tự sinh gần nhất: {settings.lastRandomizedOn}</p> : null}
+      {settings.lastRandomizedOn ? <p className="mt-2 text-xs text-slate-500">Lần tự sinh gần nhất: {shortDate(settings.lastRandomizedOn)}</p> : null}
       <div className="mt-4 flex items-center justify-end gap-3">
         {message ? <span className="text-xs text-slate-600">{message}</span> : null}
         <button type="button" className="btn-primary" disabled={busy !== null} onClick={() => void run('save', async () => {
@@ -287,7 +296,7 @@ function SimulationControls() {
   const describe = (t: { added: number; cancelled: number; moved: number; conflicts: number }) =>
     `Phía nền tảng: thêm ${t.added}, hủy ${t.cancelled}, dời ${t.moved}, cố ý trùng ${t.conflicts}. Bấm "Đồng bộ ngay" để kéo về.`;
   return (
-    <section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
       <h2 className="font-extrabold text-[#10234a]">Giả lập thay đổi trên nền tảng</h2>
       <p className="mt-1 text-xs text-slate-500">Chỉ thay đổi dữ liệu trên Airbnb/Booking.com mô phỏng. OpenStays chỉ thấy thay đổi sau khi đồng bộ, giống iCal thật.</p>
       <div className="mt-4 grid gap-2">

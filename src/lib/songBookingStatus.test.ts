@@ -49,3 +49,23 @@ describe('channelOf', () => {
     expect(channelOf({ source: 'manual:zalo' })).toBe('zalo');
   });
 });
+
+describe('admin display helpers', () => {
+  it('maps every stored source to one capitalised label, with walk-in folded into Khác', async () => {
+    const { sourceLabel } = await import('./songBookingStatus');
+    expect(sourceLabel('ical:Booking.com')).toBe('Booking.com');
+    expect(sourceLabel('ical:Airbnb')).toBe('Airbnb');
+    expect(sourceLabel('online')).toBe('Website');
+    expect(sourceLabel('manual:zalo')).toBe('Zalo');
+    expect(sourceLabel('manual:phone')).toBe('Phone');
+    expect(sourceLabel('manual:facebook')).toBe('Facebook');
+    expect(sourceLabel('manual:walk_in')).toBe('Khác');
+    expect(sourceLabel('manual:other')).toBe('Khác');
+  });
+
+  it('formats stay dates as dd/mm/yy', async () => {
+    const { shortDate, stayRange } = await import('./songBookingStatus');
+    expect(shortDate('2026-11-08')).toBe('08/11/26');
+    expect(stayRange('2026-12-30', '2027-01-02')).toBe('30/12/26 → 02/01/27');
+  });
+});

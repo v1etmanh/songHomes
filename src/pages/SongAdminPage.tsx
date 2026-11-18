@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, CalendarDays, CircleDollarSign, Clock3, Eye, FileUp, Hotel, Plus, RefreshCw, Save, Upload, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CircleDollarSign, Eye, FileUp, Hotel, Pencil, Plus, RefreshCw, Save, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -18,18 +18,19 @@ import { addMonths, startOfMonth, startOfWeek, startOfYear } from 'date-fns';
 import { todayIso, dateToIso, isoToDate, daysBetween, isIsoDate } from '../lib/dates';
 import { formatMoney } from '../lib/money';
 import type { BookingRow, Snapshot } from '../lib/songAdminTypes';
-import { CALENDAR_STATUS_FILTERS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, channelOf, managementStatus, type CalendarStatus, type ManagementStatus } from '../lib/songBookingStatus';
+import { CALENDAR_STATUS_FILTERS, SOURCE_LABELS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, managementStatus, shortDateTime, sourceLabel, stayRange, type CalendarStatus, type ManagementStatus, type SourceLabel } from '../lib/songBookingStatus';
 
 export type SongAdminSection = 'dashboard'|'accommodations'|'bookings'|'calendar'|'ical'|'services'|'conflicts'|'residence';
 
 type Catalog = { property: { currency: string }; unitTypes: Accommodation[]; units: Array<{ unitId: Id<'units'>; unitTypeId: Id<'unitTypes'>; name: string; status: string }>; addOns: Array<{ addOnId: Id<'addOns'>; name: string; priceCents: number; unitLabel: string; active: boolean }> };
 type Accommodation = { longStay: boolean; monthlyPriceCents: number | null; rates?: Array<{id:Id<'ratePlans'>; name:string; cents:number}>; unitTypeId: Id<'unitTypes'>; name: string; slug: string; description: string; photoUrls: string[]; maxOccupancy: number|null; capacityKnown: boolean; address?: string; accommodationType?: string; bedrooms?: number; bathrooms?: number; areaSqm?: number; highlights: string[]; amenities: string[]; comingSoon: boolean };
 
-const SECTION_COPY: Record<SongAdminSection,[string,string]> = {
-  dashboard:['Dashboard tổng quan','Tình hình hoạt động của Sóng Homestay trong kỳ đã chọn'], accommodations:['Quản lý chỗ nghỉ','Danh sách cơ sở, giá, sức chứa và hình ảnh'], bookings:['Quản lý booking','Tiếp nhận, tìm kiếm và xử lý booking từ mọi nguồn'], calendar:['Lịch phòng','Theo dõi ngày trống và khoảng lưu trú của từng cơ sở'], ical:['Đồng bộ dữ liệu iCal','Kéo lịch Airbnb và Booking.com về, tự động mỗi 30 phút hoặc khi bấm'], services:['Dịch vụ bổ sung','Quản lý dịch vụ và nhu cầu phát sinh theo booking'], conflicts:['Cảnh báo trùng booking','Kiểm tra và xử lý các khoảng thời gian xung đột'], residence:['Khai báo lưu trú','Quản lý khai báo lưu trú và tạm trú cho booking dài hạn'],
+// Page titles only: no "Sóng Homestay" eyebrow and no subtitle line (feedback WEBSITE (4).pdf).
+const SECTION_TITLES: Record<SongAdminSection,string> = {
+  dashboard:'Dashboard tổng quan', accommodations:'Quản lý chỗ nghỉ', bookings:'Danh sách booking', calendar:'Lịch phòng tổng quan', ical:'Đồng bộ dữ liệu iCal', services:'Dịch vụ bổ sung', conflicts:'Cảnh báo trùng booking', residence:'Khai báo lưu trú',
 };
 
-const PERIOD_LABELS: Record<string,string> = { day:'Ngày', week:'Tuần', month:'Tháng', quarter:'3 tháng (quý)', year:'Năm', custom:'Tùy chọn' };
+const PERIOD_LABELS: Record<string,string> = { day:'Ngày', week:'Tuần', month:'Tháng', quarter:'Quý', year:'Năm', custom:'Tùy chọn' };
 const CALENDAR_PERIODS = ['day','week','month'];
 const METRICS: Record<string,string> = { revenue:'Doanh thu trong kỳ', occupancy:'Công suất phòng', bookings:'Booking mới', conflicts:'Cảnh báo trùng lịch' };
 
@@ -60,25 +61,39 @@ export function SongAdminPage({ section }: { section: SongAdminSection }) {
   const endDate = !filtered ? defaultEnd : selected === 'custom' ? addDays(customEnd,1) : selected === 'day' ? addDays(anchor,1) :
     selected === 'week' ? addDays(startDate,7) : dateToIso(addMonths(start, selected === 'year' ? 12 : selected === 'quarter' ? 3 : 1));
   const snapshot = useQuery((api as any).songHomestay.adminSnapshot, { propertyId: property.propertyId, startDate, endDate }) as Snapshot|undefined;
-  // Owners and managers keep the analytics dashboard and can peek at the front-desk shift view; front desk always lands on the shift.
+  // Owners and managers keep the analytics dashboard and switch to the front-desk view from the top bar; front desk always lands on the shift.
   const canSwitchView = section === 'dashboard' && ['owner', 'manager'].includes(property.role);
   const deskView = section === 'dashboard' && (property.role === 'front_desk' || (canSwitchView && params.get('view') === 'desk'));
-  const [title, subtitle] = deskView ? ['Công việc vận hành trong ca', 'Check-in / check-out hôm nay, cảnh báo trùng lịch, đơn website chờ xác nhận và checklist trong ca'] : SECTION_COPY[section];
+  const title = deskView ? 'Công việc vận hành trong ca' : SECTION_TITLES[section];
   if (property.slug !== 'song-homestay') return <div className="card p-8"><h1 className="text-xl font-semibold">Màn hình dành riêng cho Sóng Homestay</h1><p className="mt-2 text-stone-600">Hãy chọn property Sóng Homestay ở thanh trên cùng.</p></div>;
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-extrabold uppercase tracking-[.2em] text-[#328ee0]">Sóng Homestay</p><h1 className="mt-1 text-2xl font-extrabold text-[#10234a]">{title}</h1><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{canSwitchView && <div role="group" aria-label="Góc nhìn dashboard" className="flex shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">{([['', 'Chủ nhà'], ['desk', 'Lễ tân']] as const).map(([value, label]) => <button type="button" key={label} aria-pressed={deskView === (value === 'desk')} onClick={() => update({ view: value })} className={`px-3 py-2 font-semibold ${deskView === (value === 'desk') ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>}{filtered && !deskView && <div className="flex max-w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
-      <div role="group" aria-label="Kỳ hiển thị" className="flex shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">
-        {allowedPeriods.map(value => <button type="button" key={value} aria-pressed={selected===value} onClick={() => update({ period: value })} className={`px-3 py-2 font-semibold ${selected===value ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{PERIOD_LABELS[value]}</button>)}
-      </div>
-      {selected==='custom' ? <><input aria-label="Từ ngày" className="field-input w-auto shrink-0" type="date" value={customStart} max={customEnd} onChange={e=>{if(e.target.value && e.target.value<=customEnd)update({ from: e.target.value })}}/>
-      <input aria-label="Đến ngày" className="field-input w-auto shrink-0" type="date" min={customStart} value={customEnd} onChange={e=>{if(e.target.value>=customStart)update({ to: e.target.value })}}/></> :
-      <input aria-label="Ngày trong kỳ" className="field-input w-auto shrink-0" type="date" value={anchor} onChange={e=>{if(e.target.value)update({ date: e.target.value === today ? '' : e.target.value })}}/>}
-      </div>}</div>
-    {deskView ? <FrontDeskShift propertyId={property.propertyId} timezone={property.timezone} /> : snapshot === undefined ? <Spinner label="Đang tổng hợp dữ liệu Sóng Homestay…" /> : section==='dashboard' ? <Dashboard snapshot={snapshot} metric={metric} setMetric={setMetric} startDate={startDate} endDate={endDate} /> : section==='accommodations' ? <Accommodations propertyId={property.propertyId} /> : section==='bookings' ? <Bookings propertyId={property.propertyId} snapshot={snapshot} /> : section==='calendar' ? <Calendar snapshot={snapshot} startDate={startDate} endDate={endDate} /> : section==='ical' ? <div className="space-y-6"><IcalSyncHub propertyId={property.propertyId} /><details className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><summary className="cursor-pointer font-extrabold text-[#10234a]">Nhập tệp .ics thủ công</summary><div className="mt-4"><IcalImport propertyId={property.propertyId} /></div></details></div> : section==='services' ? <ServicesDesk propertyId={property.propertyId} startDate={startDate} endDate={endDate} currency={snapshot.property.currency}/> : section==='conflicts' ? <ConflictResolver propertyId={property.propertyId} /> : <ResidenceDesk propertyId={property.propertyId} />}
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-extrabold text-[#10234a]">{title}</h1>{filtered && !deskView && <PeriodFilter periods={allowedPeriods} selected={selected} anchor={anchor} customStart={customStart} customEnd={customEnd} today={today} update={update}/>}</div>
+    {deskView ? <FrontDeskShift propertyId={property.propertyId} timezone={property.timezone} /> : snapshot === undefined ? <Spinner label="Đang tổng hợp dữ liệu Sóng Homestay…" /> : section==='dashboard' ? <Dashboard snapshot={snapshot} metric={metric} setMetric={setMetric} startDate={startDate} endDate={endDate} /> : section==='accommodations' ? <Accommodations propertyId={property.propertyId} /> : section==='bookings' ? <Bookings propertyId={property.propertyId} snapshot={snapshot} /> : section==='calendar' ? <Calendar snapshot={snapshot} startDate={startDate} endDate={endDate} /> : section==='ical' ? <IcalSyncHub propertyId={property.propertyId} manualImport={<IcalImport propertyId={property.propertyId} />} /> : section==='services' ? <ServicesDesk propertyId={property.propertyId} startDate={startDate} endDate={endDate} currency={snapshot.property.currency}/> : section==='conflicts' ? <ConflictResolver propertyId={property.propertyId} /> : <ResidenceDesk propertyId={property.propertyId} timezone={property.timezone} />}
   </div>;
 }
 
-function KpiCard({ label, value, detail, tone, icon: Icon, active, onClick }: { label:string; value:string; detail:string; tone:string; icon:typeof Hotel; active:boolean; onClick:()=>void }) { return <button type="button" aria-expanded={active} onClick={onClick} className={`text-left relative overflow-hidden rounded-2xl border p-5 shadow-sm transition hover:shadow-md ${tone} ${active ? 'ring-2 ring-blue-500' : ''}`}><div className="flex items-start gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-white/70"><Icon className="h-6 w-6" /></span><div><p className="text-sm font-bold text-slate-700">{label}</p><p className="mt-1 text-2xl font-extrabold text-[#10234a]">{value}</p><p className="mt-2 text-xs font-semibold text-emerald-600">{detail}</p></div></div><span className="mt-3 block text-xs font-semibold">{active ? 'Đang xem chi tiết' : 'Xem chi tiết ↗'}</span></button>; }
+/**
+ * Period picker as one compact control: a period dropdown plus its date
+ * input(s). Fixed-height, right-aligned and non-wrapping, so switching to
+ * "Tùy chọn" adds a second date field without moving anything else on the page.
+ */
+function PeriodFilter({ periods, selected, anchor, customStart, customEnd, today, update }: { periods: string[]; selected: string; anchor: string; customStart: string; customEnd: string; today: string; update: (patch: Record<string,string>) => void }) {
+  const field = 'h-8 w-[9.5rem] shrink-0 rounded-lg border-0 bg-slate-50 px-2 text-sm text-[#10234a]';
+  return <div className="ml-auto flex h-11 shrink-0 flex-nowrap items-center gap-2 rounded-xl border border-sky-100 bg-white px-2 shadow-sm">
+    <CalendarDays className="h-4 w-4 shrink-0 text-[#1565a8]" aria-hidden="true"/>
+    <select aria-label="Kỳ hiển thị" className="h-8 shrink-0 cursor-pointer rounded-lg border-0 bg-slate-50 pl-2 pr-8 text-sm font-semibold text-[#10234a]" value={selected} onChange={e=>update({ period: e.target.value })}>
+      {periods.map(value => <option key={value} value={value}>{PERIOD_LABELS[value]}</option>)}
+    </select>
+    {selected==='custom' ? <>
+      <input aria-label="Từ ngày" className={field} type="date" value={customStart} max={customEnd} onChange={e=>{if(e.target.value && e.target.value<=customEnd)update({ from: e.target.value })}}/>
+      <span className="text-slate-400" aria-hidden="true">→</span>
+      <input aria-label="Đến ngày" className={field} type="date" min={customStart} value={customEnd} onChange={e=>{if(e.target.value>=customStart)update({ to: e.target.value })}}/>
+    </> : <input aria-label="Ngày trong kỳ" className={field} type="date" value={anchor} onChange={e=>{if(e.target.value)update({ date: e.target.value === today ? '' : e.target.value })}}/>}
+  </div>;
+}
+
+/** KPI cards share the white card style of the rest of the page; only the icon chip carries a colour. */
+function KpiCard({ label, value, detail, tone, icon: Icon, active, onClick }: { label:string; value:string; detail:string; tone:string; icon:typeof Hotel; active:boolean; onClick:()=>void }) { return <button type="button" aria-expanded={active} onClick={onClick} className={`relative overflow-hidden rounded-2xl border border-sky-100 bg-white p-5 text-left shadow-sm transition hover:shadow-md ${active ? 'ring-2 ring-[#1565a8]' : ''}`}><div className="flex items-start gap-3"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}><Icon className="h-6 w-6" /></span><div className="min-w-0"><p className="text-sm font-bold text-slate-600">{label}</p><p className="mt-1 text-2xl font-extrabold text-[#10234a]">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p></div></div><span className="mt-3 block text-xs font-bold text-[#1565a8]">{active ? 'Đang xem chi tiết · bấm để đóng' : 'Xem chi tiết ↗'}</span></button>; }
 
 type Segment = { label: string; color: string; value: number };
 type Column = { key: string; label: string; segments: Segment[] };
@@ -127,52 +142,99 @@ function revenueColumns(snapshot: Snapshot, startDate: string, endDate: string):
   return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: [{ label: 'Phòng', color: ROOM_COLOR, value: sums.get(key)!.room }, { label: 'Dịch vụ', color: SERVICE_COLOR, value: sums.get(key)!.service }] }));
 }
 
+// One colour per source, no yellow/beige (brand palette rule).
+const SOURCE_COLORS: Record<SourceLabel, string> = { 'Booking.com': '#1d4ed8', Airbnb: '#e11d48', Zalo: '#0ea5e9', Phone: '#7c3aed', Facebook: '#2563eb', Website: '#0d9488', 'Khác': '#64748b' };
+// Four distinct hues for the four services on sale.
+const SERVICE_COLORS = ['#1565a8', '#0d9488', '#7c3aed', '#e11d48'];
+
 function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:Snapshot; metric:string; setMetric:(metric:string)=>void; startDate:string; endDate:string}) {
   const currency = snapshot.property.currency;
   const money = (cents: number) => formatMoney(cents, currency);
-  const totalSources=snapshot.sourceCounts.reduce((s,r)=>s+r.count,0)||1;
   const colorOf = (unitId: Id<'units'>) => unitColors[Math.max(0, snapshot.units.findIndex(u => u._id === unitId)) % unitColors.length];
   const unitLegend = snapshot.units.map(unit => ({ label: unit.name, color: colorOf(unit._id) }));
   const buckets = timeBuckets(startDate, endDate);
   const toggle = (key: string) => setMetric(metric === key ? '' : key);
   const periodNights = daysBetween(startDate, endDate);
+  // Stored sources ("ical:Booking.com", "manual:zalo", "online"…) fold into the seven labels staff use.
+  const sourceTotals = new Map<SourceLabel, number>(SOURCE_LABELS.map(label => [label, 0]));
+  for (const row of snapshot.sourceCounts) { const label = sourceLabel(row.source); sourceTotals.set(label, (sourceTotals.get(label) ?? 0) + row.count); }
+  const totalSources = [...sourceTotals.values()].reduce((sum, n) => sum + n, 0) || 1;
+  const conflicts = snapshot.bookings.filter((row)=>row.syncConflict);
   return <>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard active={metric==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`Phòng ${money(snapshot.kpis.roomRevenueCents)}`} tone="border-blue-100 bg-blue-50 text-blue-500" icon={CircleDollarSign}/>
-      <KpiCard active={metric==='occupancy'} onClick={()=>toggle('occupancy')} label={METRICS.occupancy} value={`${snapshot.kpis.occupancyPercent}%`} detail={`${snapshot.units.length} cơ sở đang theo dõi`} tone="border-emerald-100 bg-emerald-50 text-emerald-600" icon={Hotel}/>
-      <KpiCard active={metric==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận`} tone="border-violet-100 bg-violet-50 text-violet-600" icon={CalendarDays}/>
-      <KpiCard active={metric==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="border-orange-100 bg-orange-50 text-orange-500" icon={AlertTriangle}/>
+      <KpiCard active={metric==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`Phòng ${money(snapshot.kpis.roomRevenueCents)} · tính đến hôm nay`} tone="bg-blue-50 text-blue-600" icon={CircleDollarSign}/>
+      <KpiCard active={metric==='occupancy'} onClick={()=>toggle('occupancy')} label={METRICS.occupancy} value={`${snapshot.kpis.occupancyPercent}%`} detail={`${snapshot.units.length} cơ sở đang theo dõi`} tone="bg-teal-50 text-teal-600" icon={Hotel}/>
+      <KpiCard active={metric==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
+      <KpiCard active={metric==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
     </div>
-    {metric && <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[metric]} · Chi tiết`}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[metric]} · Chi tiết <span className="text-xs font-semibold text-slate-500">({startDate} → {addDays(endDate,-1)})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
-      {metric==='conflicts' ? <div className="mt-4"><ConflictTable rows={snapshot.bookings.filter(row=>row.syncConflict)}/><Link className="mt-3 inline-block text-sm font-bold text-blue-700" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
+    {/* An open KPI shows only its own detail; the general sections come back when it is closed. */}
+    {metric ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[metric]} · Chi tiết`}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[metric]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
+      {metric==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
        metric==='occupancy' ? <div className="mt-4 space-y-3">{snapshot.units.filter(u=>u.status==='active').map(unit=>{
          const nights=snapshot.occupancyByUnit.find(row=>row.unitId===unit._id)?.nights ?? 0;
          const percent = periodNights ? Math.round(nights / periodNights * 100) : 0;
-         return <div key={unit._id}><div className="flex justify-between text-sm"><span className="font-semibold" style={{color:colorOf(unit._id)}}>{unit.name}</span><span><strong>{percent}%</strong> · {nights}/{periodNights} đêm</span></div><div className="mt-1 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${percent}%`,background:colorOf(unit._id)}}/></div></div>;
+         return <div key={unit._id}><div className="flex justify-between gap-3 text-sm"><span className="font-semibold" style={{color:colorOf(unit._id)}}>{unit.name}</span><span className="whitespace-nowrap"><strong>{percent}%</strong> · {nights}/{periodNights} đêm</span></div><div className="mt-1 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${percent}%`,background:colorOf(unit._id)}}/></div></div>;
        })}</div> :
        metric==='bookings' ? <>
          <p className="mt-1 text-xs text-slate-500">Số booking mới theo {buckets.unit} (ngày tạo), tách màu theo căn.</p>
          <StackedBars format={String} empty="Không có booking mới trong kỳ." columns={buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: snapshot.units.map(unit => ({ label: unit.name, color: colorOf(unit._id), value: snapshot.newBookings.filter(b => b.unitId === unit._id && buckets.keyOf(b.date) === key).length })) }))}/>
          <Legend items={unitLegend}/>
-         <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">{snapshot.units.map(unit => { const codes = snapshot.newBookings.filter(b => b.unitId === unit._id).map(b => b.code); return codes.length ? <p key={unit._id}><strong style={{color:colorOf(unit._id)}}>{unit.name}</strong> ({codes.length}): <span className="text-slate-600">{codes.join(', ')}</span></p> : null; })}</div>
        </> :
        <>
          <div className="mt-4 grid gap-3 sm:grid-cols-3">{[['Tiền phòng',snapshot.kpis.roomRevenueCents,ROOM_COLOR],['Dịch vụ',snapshot.kpis.serviceRevenueCents,SERVICE_COLOR],['Tổng',snapshot.kpis.totalRevenueCents,'#10234a']].map(([name,value,color])=><div key={String(name)} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">{name}</p><p className="text-lg font-extrabold" style={{color:String(color)}}>{money(Number(value))}</p></div>)}</div>
+         <p className="mt-2 text-xs text-slate-500">Chỉ ghi nhận các booking đã đến ngày nhận phòng (tính đến hôm nay).</p>
          <StackedBars format={money} empty="Chưa có doanh thu trong kỳ." columns={revenueColumns(snapshot,startDate,endDate)}/>
          <Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/>
        </>}
-    </section>}
+    </section> : <>
     <div className="grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
       <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">Biểu đồ doanh thu</h2><span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Theo ngày nhận phòng · mỗi cột 1 {buckets.unit}</span></div><StackedBars format={money} empty="Chưa có doanh thu trong kỳ" columns={revenueColumns(snapshot,startDate,endDate)}/><Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/></section>
-      <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Nguồn booking</h2><div className="mt-6 space-y-4">{snapshot.sourceCounts.length?snapshot.sourceCounts.map((row,index)=><div key={row.source}><div className="flex justify-between text-sm"><span className="font-semibold text-slate-600">{row.source}</span><strong>{Math.round(row.count/totalSources*100)}%</strong></div><div className="mt-2 h-2 rounded-full bg-slate-100"><div className={`h-full rounded-full ${['bg-blue-500','bg-orange-400','bg-teal-500','bg-violet-500'][index%4]}`} style={{width:`${row.count/totalSources*100}%`}}/></div></div>):<p className="text-sm text-slate-400">Chưa có booking</p>}</div></section>
+      <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Nguồn booking</h2><div className="mt-5 space-y-3.5">{SOURCE_LABELS.map(label=>{ const count = sourceTotals.get(label) ?? 0; const percent = Math.round(count/totalSources*100); return <div key={label}><div className="flex justify-between text-sm"><span className="font-semibold text-slate-600">{label}</span><span className="whitespace-nowrap"><strong className="text-[#10234a]">{percent}%</strong> <span className="text-xs text-slate-400">· {count}</span></span></div><div className="mt-1.5 h-2 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${count/totalSources*100}%`,background:SOURCE_COLORS[label]}}/></div></div>; })}</div></section>
     </div>
-    <div className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><ConflictTable rows={snapshot.bookings.filter((row)=>row.syncConflict).slice(0,4)} /><section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm"><img src="/song-homestay/hero.webp" alt="Sóng Homestay bên biển Mỹ Khê" className="h-36 w-full object-cover"/><div className="p-5"><h2 className="font-extrabold text-[#10234a]">Thao tác nhanh</h2><div className="mt-4 grid grid-cols-2 gap-3"><Link className="rounded-xl bg-blue-50 p-3 text-center text-sm font-bold text-blue-700" to="/admin/bookings?new=1">Thêm booking</Link><Link className="rounded-xl bg-emerald-50 p-3 text-center text-sm font-bold text-emerald-700" to="/admin/accommodations">Quản lý phòng</Link><Link className="rounded-xl bg-violet-50 p-3 text-center text-sm font-bold text-violet-700" to="/admin/ical">Đồng bộ iCal</Link></div></div></section></div>
-    <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ</h2><div className="mt-4 grid gap-4 md:grid-cols-3">{snapshot.serviceUsage.map((row)=><div key={row.name} className="rounded-xl bg-slate-50 p-4"><h3 className="font-bold">{row.name}</h3><p className="mt-2 text-2xl font-extrabold text-blue-700">{row.count}</p><p className="text-xs text-slate-500">{money(row.revenueCents)}</p></div>)}</div></section>
+    <ConflictTable rows={conflicts.slice(0,6)} />
+    <ServicePie usage={snapshot.serviceUsage} money={money} />
+    </>}
   </>;
 }
 
-function ConflictTable({ rows }: { rows: BookingRow[] }) { return <section className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm"><div className="flex items-center gap-2 bg-red-50 px-5 py-4 text-red-800"><AlertTriangle className="h-5 w-5"/><h2 className="font-extrabold">Cảnh báo Double Booking ({rows.length})</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[42rem] text-left text-sm"><thead className="bg-red-50/50 text-xs text-slate-500"><tr><th className="p-3">Mã booking</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Nguồn</th><th className="p-3">Thời gian</th><th className="p-3">Trạng thái</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-red-100"><td className="p-3 font-bold">{row.confirmationCode}</td><td className="p-3">{row.unitName}</td><td className="p-3">{row.source}</td><td className="p-3">{row.checkIn} → {row.checkOut}</td><td className="p-3"><span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700">Chưa xử lý</span></td></tr>)}{!rows.length?<tr><td colSpan={5} className="p-8 text-center text-slate-400">Không có cảnh báo trùng lịch.</td></tr>:null}</tbody></table></div></section>; }
+/** Donut of the four services on sale. Clicking a slice (or its legend row) shows its bookings and revenue in large figures. */
+function ServicePie({ usage, money }: { usage: Snapshot['serviceUsage']; money: (cents: number) => string }) {
+  const rows = usage.slice(0, 4).map((row, index) => ({ ...row, color: SERVICE_COLORS[index % SERVICE_COLORS.length] }));
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const active = rows.find(row => row.name === picked) ?? [...rows].sort((a, b) => b.count - a.count)[0];
+  const radius = 70; const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  return <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
+    <h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ</h2>
+    {!rows.length ? <p className="mt-4 text-sm text-slate-400">Chưa có dịch vụ đang bán.</p> :
+    <div className="mt-4 grid items-center gap-6 md:grid-cols-[auto_1fr_minmax(14rem,.8fr)]">
+      <svg viewBox="0 0 200 200" className="mx-auto h-48 w-48" role="img" aria-label="Tỷ trọng số lần đặt theo dịch vụ">
+        <circle cx="100" cy="100" r={radius} fill="none" stroke="#eef2f7" strokeWidth="34"/>
+        {total ? rows.map(row => { const length = row.count / total * circumference; const dash = <circle key={row.name} cx="100" cy="100" r={radius} fill="none" stroke={row.color} strokeWidth={active?.name === row.name ? 40 : 32} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} transform="rotate(-90 100 100)" className="cursor-pointer transition-[stroke-width]" onClick={() => setPicked(row.name)}><title>{`${row.name}: ${row.count} lần`}</title></circle>; offset += length; return row.count ? dash : null; }) : null}
+        <text x="100" y="96" textAnchor="middle" className="fill-[#10234a] text-[26px] font-extrabold">{total}</text>
+        <text x="100" y="118" textAnchor="middle" className="fill-slate-500 text-[11px] font-semibold">lần đặt</text>
+      </svg>
+      <ul className="space-y-1.5">{rows.map(row => <li key={row.name}><button type="button" aria-pressed={active?.name === row.name} onClick={() => setPicked(row.name)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active?.name === row.name ? 'bg-sky-50 ring-1 ring-sky-200' : 'hover:bg-slate-50'}`}><span className="h-3 w-3 shrink-0 rounded-full" style={{ background: row.color }}/><span className="min-w-0 flex-1 font-semibold text-slate-700">{row.name}</span><span className="whitespace-nowrap text-xs font-bold text-slate-500">{total ? Math.round(row.count / total * 100) : 0}%</span></button></li>)}</ul>
+      {active ? <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-5" aria-live="polite">
+        <p className="flex items-start gap-2 text-sm font-bold text-slate-600"><span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: active.color }}/>{active.name}</p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div><p className="text-xs font-semibold text-slate-500">Số lần đặt</p><p className="text-3xl font-extrabold text-[#10234a]">{active.count}</p></div>
+          <div><p className="text-xs font-semibold text-slate-500">Tỷ trọng</p><p className="text-3xl font-extrabold text-[#10234a]">{total ? Math.round(active.count / total * 100) : 0}%</p></div>
+        </div>
+        <p className="mt-4 text-xs font-semibold text-slate-500">Doanh thu</p><p className="whitespace-nowrap text-2xl font-extrabold text-[#1565a8]">{money(active.revenueCents)}</p>
+      </div> : null}
+    </div>}
+  </section>;
+}
+
+/** Double-booking table: white card like the others; red is kept to the title strip. Cells never wrap, except the stay name. */
+function ConflictTable({ rows, bare = false }: { rows: BookingRow[]; bare?: boolean }) {
+  const table = <div className="overflow-x-auto"><table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã booking</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Nguồn</th><th className="p-3">Thời gian</th><th className="p-3">Trạng thái</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-slate-100"><td className="p-3 font-bold text-[#10234a]">{row.confirmationCode}</td><td className="min-w-48 p-3 !whitespace-normal">{row.unitName}</td><td className="p-3">{sourceLabel(row.source)}</td><td className="p-3">{stayRange(row.checkIn, row.checkOut)}</td><td className="p-3"><span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">Chưa xử lý</span></td></tr>)}{!rows.length?<tr><td colSpan={5} className="p-8 text-center text-slate-400">Không có cảnh báo trùng lịch.</td></tr>:null}</tbody></table></div>;
+  if (bare) return <div className="overflow-hidden rounded-xl border border-sky-100">{table}</div>;
+  return <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm"><div className="flex items-center justify-between gap-2 border-b border-red-100 bg-red-50 px-5 py-3.5 text-red-700"><h2 className="flex items-center gap-2 font-extrabold"><AlertTriangle className="h-5 w-5"/>Cảnh báo Double Booking ({rows.length})</h2><Link className="whitespace-nowrap text-xs font-bold text-red-700 hover:underline" to="/admin/conflicts">Xử lý ↗</Link></div>{table}</section>;
+}
 
 function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) {
   const catalog = useQuery(api.songHomestay.managementCatalog, { propertyId });
@@ -193,7 +255,7 @@ function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[60rem] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr><th className="p-3">Chỗ nghỉ</th><th className="p-3">Loại hình</th><th className="p-3">Địa chỉ</th><th className="p-3">PN / PT</th><th className="p-3">Sức chứa</th><th className="p-3">Giá</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr>
+            <tr className="[&>th]:whitespace-nowrap"><th className="p-3">Chỗ nghỉ</th><th className="p-3">Loại hình</th><th className="p-3">Địa chỉ</th><th className="p-3">PN / PT</th><th className="p-3">Sức chứa</th><th className="p-3">Giá</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr>
           </thead>
           <tbody>
             {stays.map((item) => {
@@ -201,13 +263,13 @@ function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) {
               return (
                 <tr key={item.unitTypeId} className="border-t border-slate-100 align-middle">
                   <td className="p-3"><div className="flex items-center gap-3"><img src={item.photoUrls[0] ?? '/song-homestay/hero.webp'} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" /><span className="font-semibold text-[#10234a]">{item.name}</span></div></td>
-                  <td className="p-3">{item.accommodationType ?? '—'}{item.longStay ? <span className="ml-2 rounded-full bg-[#e3eefa] px-2 py-0.5 text-xs font-semibold text-[#1565a8]">Dài hạn</span> : null}</td>
+                  <td className="whitespace-nowrap p-3">{item.accommodationType ?? '—'}{item.longStay ? <span className="ml-2 rounded-full bg-[#e3eefa] px-2 py-0.5 text-xs font-semibold text-[#1565a8]">Dài hạn</span> : null}</td>
                   <td className="p-3 text-slate-600">{item.address ?? '—'}</td>
-                  <td className="p-3">{item.bedrooms ?? '—'} / {item.bathrooms ?? '—'}</td>
-                  <td className="p-3">{item.maxOccupancy ? `${item.maxOccupancy} khách` : 'Chưa rõ'}</td>
+                  <td className="whitespace-nowrap p-3">{item.bedrooms ?? '—'} / {item.bathrooms ?? '—'}</td>
+                  <td className="whitespace-nowrap p-3">{item.maxOccupancy ? `${item.maxOccupancy} khách` : 'Chưa rõ'}</td>
                   <td className="whitespace-nowrap p-3 font-semibold">{item.longStay && item.monthlyPriceCents ? `${formatMoney(item.monthlyPriceCents, currency)}/tháng` : nightly != null ? `${formatMoney(nightly, currency)}/đêm` : '—'}</td>
-                  <td className="p-3">{item.comingSoon ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Tạm dừng</span> : <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Đang hoạt động</span>}</td>
-                  <td className="p-3"><button type="button" className="font-semibold text-blue-700 hover:underline" onClick={() => setEditing(item.slug)}>Chỉnh sửa</button></td>
+                  <td className="whitespace-nowrap p-3">{item.comingSoon ? <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Tạm dừng</span> : <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Đang hoạt động</span>}</td>
+                  <td className="whitespace-nowrap p-3"><button type="button" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-sky-200 bg-white px-3.5 py-1.5 text-xs font-bold text-[#1565a8] transition hover:bg-sky-50" onClick={() => setEditing(item.slug)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Chỉnh sửa</button></td>
                 </tr>
               );
             })}
@@ -562,21 +624,17 @@ function StatusPill({ status }: { status: CalendarStatus }) { const color = stat
 
 const BOOKING_SORTS = { newest: 'Mới nhất (vừa tạo)', checkin: 'Ngày check-in gần nhất' } as const;
 type BookingSort = keyof typeof BOOKING_SORTS;
-const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function Bookings({propertyId,snapshot}:{propertyId:Id<'properties'>;snapshot:Snapshot}) {
   const { property } = useAdminProperty();
   const update=useMutation((api as any).songHomestay.updateBookingStatus);
   const [params,setParams]=useSearchParams();
   const [toast,setToast]=useState('');
-  // Date.now() is read once per mount: "recent" means created in the 24h before this page was opened.
-  const [now]=useState(()=>Date.now());
   const search=params.get('q') ?? '';
   const creating=params.get('new')==='1';
   const rawStatus=params.get('status') ?? '';
   const statusFilter=(MANAGEMENT_STATUSES as string[]).includes(rawStatus) ? rawStatus as ManagementStatus : '';
   const sort: BookingSort = params.get('sort')==='checkin' ? 'checkin' : 'newest';
-  const recentOnly=params.get('recent')==='1';
   const just=params.get('just') ?? '';
   const detailCode=params.get('booking') ?? '';
   const setParam=(key:string,value:string)=>setParams(prev=>{const next=new URLSearchParams(prev); if(value) next.set(key,value); else next.delete(key); return next;},{replace:true});
@@ -586,7 +644,6 @@ function Bookings({propertyId,snapshot}:{propertyId:Id<'properties'>;snapshot:Sn
     .filter(row=>row.status!=='blocked')
     .filter(row=>`${row.confirmationCode} ${row.guestName} ${row.unitName}`.toLowerCase().includes(needle))
     .filter(row=>!statusFilter || managementStatus(row)===statusFilter)
-    .filter(row=>!recentOnly || row.confirmationCode===just || now-row.createdAt<=RECENT_WINDOW_MS)
     .sort((a,b)=>{
       // The booking staff just created always sits on the first line, whatever the sort.
       if((a.confirmationCode===just)!==(b.confirmationCode===just)) return a.confirmationCode===just ? -1 : 1;
@@ -594,30 +651,29 @@ function Bookings({propertyId,snapshot}:{propertyId:Id<'properties'>;snapshot:Sn
     });
   const detail=detailCode ? snapshot.bookings.find(row=>row.confirmationCode===detailCode) : undefined;
   async function transition(row:BookingRow,status:'confirmed'|'checked_in'|'checked_out'|'cancelled'){try{await update({propertyId,bookingId:row.bookingId,status});}catch(error){window.alert(extractErrorMessage(error));}}
-  function actionsFor(row:BookingRow){return <div className="flex flex-wrap gap-2">{row.status==='pending'?<button type="button" className="text-xs font-bold text-emerald-700" onClick={()=>void transition(row,'confirmed')}>Xác nhận</button>:null}{row.status==='confirmed'?<button type="button" className="text-xs font-bold text-blue-700" onClick={()=>void transition(row,'checked_in')}>Check-in</button>:null}{row.status==='checked_in'?<button type="button" className="text-xs font-bold text-violet-700" onClick={()=>void transition(row,'checked_out')}>Hoàn thành</button>:null}{['pending','confirmed'].includes(row.status)?<button type="button" className="text-xs font-bold text-red-700" onClick={()=>void transition(row,'cancelled')}>Hủy</button>:null}</div>;}
-  const chip=(active:boolean)=>`rounded-full border px-3 py-1.5 text-xs font-bold transition ${active?'border-[#1565a8] bg-[#1565a8] text-white':'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`;
+  const pill='whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold transition';
+  function actionsFor(row:BookingRow){return <div className="flex flex-nowrap gap-1.5">{row.status==='pending'?<button type="button" className={`${pill} bg-[#0b2e4f] text-white hover:bg-[#1565a8]`} onClick={()=>void transition(row,'confirmed')}>Xác nhận</button>:null}{row.status==='confirmed'?<button type="button" className={`${pill} bg-[#0b2e4f] text-white hover:bg-[#1565a8]`} onClick={()=>void transition(row,'checked_in')}>Check-in</button>:null}{row.status==='checked_in'?<button type="button" className={`${pill} bg-teal-700 text-white hover:bg-teal-800`} onClick={()=>void transition(row,'checked_out')}>Hoàn thành</button>:null}{['pending','confirmed'].includes(row.status)?<button type="button" className={`${pill} border border-red-200 bg-white text-red-700 hover:bg-red-50`} onClick={()=>void transition(row,'cancelled')}>Hủy</button>:null}</div>;}
+  const tab=(active:boolean)=>`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition ${active?'bg-white text-[#0b2e4f] shadow-sm':'text-slate-500 hover:text-[#0b2e4f]'}`;
   return <div className="space-y-6">
-    {creating && <CreateBookingDialog propertyId={propertyId} close={()=>setParam('new','')} onCreated={(code)=>{setParams(prev=>{const next=new URLSearchParams(prev); next.delete('new'); next.delete('status'); next.delete('q'); next.delete('recent'); next.set('just',code); return next;},{replace:true}); setToast(`Đã tạo booking ${code}. Lịch phòng đã được khóa và đơn nằm ở dòng đầu tiên.`);}}/>}
+    {creating && <CreateBookingDialog propertyId={propertyId} close={()=>setParam('new','')} onCreated={(code)=>{setParams(prev=>{const next=new URLSearchParams(prev); next.delete('new'); next.delete('status'); next.delete('q'); next.set('just',code); return next;},{replace:true}); setToast(`Đã tạo booking ${code}. Lịch phòng đã được khóa và đơn nằm ở dòng đầu tiên.`);}}/>}
     {detail && <BookingDetailDialog row={detail} currency={snapshot.property.currency} timezone={property.timezone} actions={actionsFor(detail)} close={()=>setParam('booking','')}/>}
     <section className="rounded-2xl border border-sky-100 bg-white shadow-sm">
-      <div className="grid items-center gap-3 p-4 md:grid-cols-[1fr_minmax(0,28rem)_1fr]"><h2 className="font-extrabold text-[#10234a]">Danh sách booking</h2>
-        <input type="search" aria-label="Tìm booking" className="field-input w-full" placeholder="Tìm mã, khách hoặc cơ sở…" value={search} onChange={(e)=>setParam('q',e.target.value)}/>
-        <div className="md:justify-self-start"><button type="button" className="btn-primary whitespace-nowrap" onClick={()=>setParam('new','1')}>+ Tạo và khóa booking</button></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
-        <div role="group" aria-label="Lọc theo trạng thái" className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={!statusFilter} className={chip(!statusFilter)} onClick={()=>setParam('status','')}>Tất cả</button>
-          {MANAGEMENT_STATUSES.map(value=><button type="button" key={value} aria-pressed={statusFilter===value} className={chip(statusFilter===value)} onClick={()=>setParam('status',statusFilter===value?'':value)}>{STATUS_LABELS[value]}</button>)}
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        <div role="group" aria-label="Lọc theo trạng thái" className="flex shrink-0 gap-1 rounded-xl bg-slate-100 p-1">
+          <button type="button" aria-pressed={!statusFilter} className={tab(!statusFilter)} onClick={()=>setParam('status','')}>Tất cả</button>
+          {MANAGEMENT_STATUSES.map(value=><button type="button" key={value} aria-pressed={statusFilter===value} className={tab(statusFilter===value)} onClick={()=>setParam('status',statusFilter===value?'':value)}>{STATUS_LABELS[value]}</button>)}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" aria-pressed={recentOnly} className={`${chip(recentOnly)} inline-flex items-center gap-1.5`} onClick={()=>setParam('recent',recentOnly?'':'1')}><Clock3 className="h-3.5 w-3.5" aria-hidden="true"/>Mới nhất</button>
-          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">Sắp xếp<select aria-label="Sắp xếp booking" className="field-input w-auto" value={sort} onChange={(e)=>setParam('sort',e.target.value==='newest'?'':e.target.value)}>{(Object.keys(BOOKING_SORTS) as BookingSort[]).map(key=><option key={key} value={key}>{BOOKING_SORTS[key]}</option>)}</select></label>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <label className="relative"><span className="sr-only">Tìm booking</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true"/><input type="search" className="field-input w-64 pl-9" placeholder="Tìm mã, khách hoặc cơ sở…" value={search} onChange={(e)=>setParam('q',e.target.value)}/></label>
+          <select aria-label="Sắp xếp booking" className="field-input w-auto" value={sort} onChange={(e)=>setParam('sort',e.target.value==='newest'?'':e.target.value)}>{(Object.keys(BOOKING_SORTS) as BookingSort[]).map(key=><option key={key} value={key}>{BOOKING_SORTS[key]}</option>)}</select>
+          <button type="button" className="btn-primary whitespace-nowrap" onClick={()=>setParam('new','1')}><Plus className="h-4 w-4" aria-hidden="true"/>Tạo và khóa booking</button>
         </div>
       </div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[70rem] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã</th><th className="p-3">Khách</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Lưu trú</th><th className="p-3">Nguồn</th><th className="p-3">Tổng tiền</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr></thead><tbody>{rows.map((row)=>{
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã</th><th className="p-3">Khách</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Lưu trú</th><th className="p-3">Nguồn</th><th className="p-3">Tổng tiền</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr></thead><tbody>{rows.map((row)=>{
         const fresh=row.confirmationCode===just;
         return <tr key={row.bookingId} aria-current={fresh?'true':undefined} className={`border-t border-slate-100 ${fresh?'bg-sky-50 shadow-[inset_4px_0_0_#1565a8]':''}`}>
           <td className="p-3 font-bold">{row.confirmationCode}{fresh?<span className="ml-2 rounded-full bg-[#1565a8] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">Vừa tạo</span>:null}</td>
-          <td className="p-3"><strong>{row.guestName}</strong><br/><span className="text-xs text-slate-500">{row.guestPhone}</span></td><td className="p-3">{row.unitName}</td><td className="p-3">{row.checkIn}<br/>→ {row.checkOut}</td><td className="p-3">{row.source}</td><td className="p-3 font-semibold">{formatMoney(row.totalCents,snapshot.property.currency)}</td>
+          <td className="p-3"><strong>{row.guestName}</strong><br/><span className="text-xs text-slate-500">{row.guestPhone}</span></td><td className="min-w-48 p-3 !whitespace-normal">{row.unitName}</td><td className="p-3">{stayRange(row.checkIn, row.checkOut)}</td><td className="p-3">{sourceLabel(row.source)}</td><td className="p-3 font-semibold">{formatMoney(row.totalCents,snapshot.property.currency)}</td>
           <td className="p-3"><StatusPill status={managementStatus(row)}/>{fresh?<span className="mt-1 block w-fit rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-[#1565a8]">Mới tạo · Đã khóa</span>:null}{row.residenceMissing?<span className="mt-1 block w-fit rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">Thiếu khai báo {row.residenceMissing}</span>:null}</td>
           <td className="p-3"><div className="flex items-center gap-3"><button type="button" aria-label={`Xem chi tiết booking ${row.confirmationCode}`} title="Xem chi tiết" className="grid h-8 w-8 place-items-center rounded-full text-[#1565a8] hover:bg-sky-50" onClick={()=>setParam('booking',row.confirmationCode)}><Eye className="h-4 w-4" aria-hidden="true"/></button>{actionsFor(row)}</div></td></tr>;
       })}{!rows.length?<tr><td colSpan={8} className="p-8 text-center text-slate-400">Không có booking phù hợp.</td></tr>:null}</tbody></table></div>
@@ -630,9 +686,9 @@ function BookingDetailDialog({row,currency,timezone,actions,close}:{row:BookingR
   const dialog=useRef<HTMLDialogElement>(null);
   useEffect(()=>{dialog.current?.showModal();},[]);
   const nights=daysBetween(row.checkIn,row.checkOut);
-  const created=new Intl.DateTimeFormat('vi-VN',{timeZone:timezone,dateStyle:'short',timeStyle:'short'}).format(row.createdAt);
+  const created=shortDateTime(row.createdAt,timezone);
   const guests=`${row.adults} người lớn${row.children?`, ${row.children} trẻ em`:''}${row.infants?`, ${row.infants} em bé`:''}${row.pets?`, ${row.pets} thú cưng`:''}`;
-  const items:Array<[string,React.ReactNode]>=[['Khách',<strong key="g">{row.guestName}</strong>],['Điện thoại',row.guestPhone||'-'],['Email',row.guestEmail||'-'],['Chỗ nghỉ',row.unitName],['Lưu trú',`${row.checkIn} → ${row.checkOut} (${nights} đêm)`],['Số khách',guests],['Nguồn',row.source==='online'?'Website':channelOf(row)],['Dịch vụ kèm',formatMoney(row.serviceCents,currency)],['Tổng tiền',<strong key="t">{formatMoney(row.totalCents,currency)}</strong>],['Tạo lúc',created]];
+  const items:Array<[string,React.ReactNode]>=[['Khách',<strong key="g">{row.guestName}</strong>],['Điện thoại',row.guestPhone||'-'],['Email',row.guestEmail||'-'],['Chỗ nghỉ',row.unitName],['Lưu trú',`${stayRange(row.checkIn,row.checkOut)} (${nights} đêm)`],['Số khách',guests],['Nguồn',sourceLabel(row.source)],['Dịch vụ kèm',formatMoney(row.serviceCents,currency)],['Tổng tiền',<strong key="t">{formatMoney(row.totalCents,currency)}</strong>],['Tạo lúc',created]];
   return <dialog ref={dialog} onCancel={close} onClick={e=>{if(e.target===dialog.current)close();}} aria-labelledby="booking-detail-heading" className="w-[min(96vw,34rem)] rounded-2xl p-0 shadow-xl backdrop:bg-black/40">
     <div className="flex items-center justify-between border-b px-5 py-4"><div><h2 id="booking-detail-heading" className="text-lg font-extrabold text-[#10234a]">Booking {row.confirmationCode}</h2><div className="mt-1"><StatusPill status={managementStatus(row)}/></div></div><button type="button" className="btn-secondary" onClick={close}>Đóng</button></div>
     <dl className="space-y-2 p-5 text-sm">{items.map(([label,value])=><div key={label} className="grid grid-cols-[8rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="text-slate-800">{value}</dd></div>)}</dl>
@@ -652,8 +708,9 @@ function CreateBookingDialog({propertyId,close,onCreated}:{propertyId:Id<'proper
 
 // Ten clearly distinct hues so every Sóng unit (8 today) keeps its own colour.
 const unitColors = ['#1d4ed8','#7e22ce','#047857','#b45309','#be185d','#0e7490','#dc2626','#65a30d','#4338ca','#a16207'];
-const statusColors: Record<CalendarStatus,string> = {pending:'#c2410c',confirmed:'#1d4ed8',completed:'#6d28d9',cancelled:'#991b1b',blocked:'#475569'};
-const barLabel = (row: BookingRow) => row.status === 'external' ? channelOf(row) : row.guestName;
+// A blocked night draws like any occupied night: the grey "Khóa phòng" colour and legend entry are gone.
+const statusColors: Record<CalendarStatus,string> = {pending:'#e11d48',confirmed:'#1d4ed8',completed:'#6d28d9',cancelled:'#991b1b',blocked:'#1d4ed8'};
+const barLabel = (row: BookingRow) => row.status === 'external' ? sourceLabel(row.source) : row.guestName;
 
 type Popover = { booking: BookingRow; x: number; y: number };
 
@@ -682,10 +739,9 @@ function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:stri
     setPopover({booking,x:Math.max(16,x),y:Math.max(16,y)});
   }
   return <section className="card overflow-hidden p-4">
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold">Lịch phòng tổng quan</h2>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-3 text-xs font-semibold">{CALENDAR_STATUS_FILTERS.map(s=>[s,statusColors[s]] as const).map(([s,color])=><button type="button" key={s} onClick={()=>setParams(prev=>{const next=new URLSearchParams(prev); if(status===s) next.delete('status'); else next.set('status',s); return next;},{replace:true})} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${status===s?'ring-2 ring-offset-1':''}`} style={{color}}><span className="h-2.5 w-2.5 rounded-sm" style={{background:color}}/>{STATUS_LABELS[s]}</button>)}</div>
     <select aria-label="Trạng thái booking" className="field-input w-auto" value={status} onChange={e=>setParams(prev=>{const next=new URLSearchParams(prev); if(e.target.value) next.set('status',e.target.value); else next.delete('status'); return next;},{replace:true})}>
       <option value="">Mọi trạng thái</option>{CALENDAR_STATUS_FILTERS.map(s=><option value={s} key={s}>{STATUS_LABELS[s]}</option>)}</select></div>
-    <div className="mb-3 flex flex-wrap gap-3 text-xs font-semibold">{CALENDAR_STATUS_FILTERS.map(s=>[s,statusColors[s]] as const).map(([s,color])=><button type="button" key={s} onClick={()=>setParams(prev=>{const next=new URLSearchParams(prev); if(status===s) next.delete('status'); else next.set('status',s); return next;},{replace:true})} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${status===s?'ring-2 ring-offset-1':''}`} style={{color}}><span className="h-2.5 w-2.5 rounded-sm" style={{background:color}}/>{STATUS_LABELS[s]}</button>)}</div>
     <div className="overflow-x-auto"><div className="min-w-fit text-xs">
       <div className="flex border-b"><div className="w-36 shrink-0 p-2 font-bold">Căn lưu trú</div><div className="grid flex-1" style={{gridTemplateColumns:columns}}>{days.map(day=><div key={day} className={`border-l p-2 text-center font-semibold ${day===today?'bg-blue-50 text-blue-700':''}`}>{day.slice(8)}/{day.slice(5,7)}</div>)}</div></div>
       {snapshot.units.map((unit,i)=>{
@@ -708,15 +764,15 @@ function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:stri
       <div className="mt-2"><StatusPill status={calendarStatus(popover.booking,today)}/></div>
       <dl className="mt-3 space-y-1 text-slate-700">
         <div><dt className="inline text-slate-500">Căn: </dt><dd className="inline font-semibold">{popover.booking.unitName}</dd></div>
-        <div><dt className="inline text-slate-500">Nguồn: </dt><dd className="inline">{popover.booking.source === 'online' ? 'Website' : channelOf(popover.booking)}</dd></div>
-        <div><dt className="inline text-slate-500">Lưu trú: </dt><dd className="inline">{popover.booking.checkIn} → {popover.booking.checkOut} ({daysBetween(popover.booking.checkIn,popover.booking.checkOut)} đêm)</dd></div>
+        <div><dt className="inline text-slate-500">Nguồn: </dt><dd className="inline">{sourceLabel(popover.booking.source)}</dd></div>
+        <div><dt className="inline text-slate-500">Lưu trú: </dt><dd className="inline">{stayRange(popover.booking.checkIn, popover.booking.checkOut)} ({daysBetween(popover.booking.checkIn,popover.booking.checkOut)} đêm)</dd></div>
         <div><dt className="inline text-slate-500">Khách: </dt><dd className="inline">{popover.booking.adults} người lớn, {popover.booking.children} trẻ em{popover.booking.infants ? `, ${popover.booking.infants} em bé` : ''}{popover.booking.pets ? `, ${popover.booking.pets} thú cưng` : ''}</dd></div>
         {popover.booking.guestPhone && <div><dt className="inline text-slate-500">Điện thoại: </dt><dd className="inline">{popover.booking.guestPhone}</dd></div>}
         <div><dt className="inline text-slate-500">Tổng tiền: </dt><dd className="inline font-semibold">{formatMoney(popover.booking.totalCents,snapshot.property.currency)}</dd></div>
       </dl>
-      <Link className="mt-3 inline-block font-bold text-blue-700" to={`/admin/bookings?q=${encodeURIComponent(popover.booking.confirmationCode)}`}>Mở trong Quản lý booking ↗</Link>
+      <Link className="mt-3 inline-block font-bold text-blue-700" to={`/admin/bookings?q=${encodeURIComponent(popover.booking.confirmationCode)}`}>Mở trong Danh sách booking ↗</Link>
     </div>}
   </section>;
 }
 
-function IcalImport({propertyId}:{propertyId:Id<'properties'>}) { const catalog=useQuery((api as any).songHomestay.managementCatalog,{propertyId}) as Catalog|undefined; const upload=useAction((api as any).icalImport.uploadManualIcs); const [unitId,setUnitId]=useState(''); const [source,setSource]=useState<'Airbnb'|'Booking.com'>('Airbnb'); const [file,setFile]=useState<File|null>(null); const [message,setMessage]=useState(''); const [working,setWorking]=useState(false); async function submit(e:FormEvent){e.preventDefault();if(!file||!unitId)return;setWorking(true);try{const result=await upload({propertyId,unitId:unitId as Id<'units'>,source,icsText:await file.text()});setMessage(`Đã nhập: ${result.inserted} mới, ${result.updated} cập nhật, ${result.removed} hủy, ${result.conflicts} xung đột.`);}catch(error){setMessage(extractErrorMessage(error));}finally{setWorking(false);}} if(!catalog)return <Spinner label="Đang tải danh sách cơ sở…"/>; return <div className="grid gap-6 xl:grid-cols-[.75fr_1.25fr]"><form onSubmit={submit} className="rounded-2xl border border-sky-100 bg-white p-6 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-600"><FileUp className="h-7 w-7"/></span><h2 className="mt-5 text-xl font-extrabold text-[#10234a]">Tải lên tệp .ics</h2><div className="mt-5 space-y-4"><label><span className="field-label">Cơ sở lưu trú</span><select required className="field-input" value={unitId} onChange={(e)=>setUnitId(e.target.value)}><option value="">Chọn cơ sở</option>{catalog.units.map((unit)=><option key={unit.unitId} value={unit.unitId}>{unit.name}</option>)}</select></label><label><span className="field-label">Nguồn dữ liệu</span><select className="field-input" value={source} onChange={(e)=>setSource(e.target.value as typeof source)}><option>Airbnb</option><option>Booking.com</option></select></label><label><span className="field-label">Tệp iCal (tối đa 1 MB)</span><input required accept=".ics,text/calendar" type="file" className="field-input" onChange={(e)=>setFile(e.target.files?.[0]??null)}/></label><button className="btn-primary w-full justify-center" disabled={working||!file||!unitId}>{working?<><RefreshCw className="h-4 w-4 animate-spin"/>Đang nhập…</>:<>Nhập dữ liệu iCal</>}</button>{message?<p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{message}</p>:null}</div></form><section className="rounded-2xl border border-sky-100 bg-white p-6 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Lần nhập gần nhất theo cơ sở</h2><div className="mt-4 space-y-3">{catalog.units.map((unit)=>{const raw=(unit as any).icalImports??[];return <div key={unit.unitId} className="rounded-xl border border-slate-100 p-4"><h3 className="font-bold text-slate-800">{unit.name}</h3><p className="mt-1 text-sm text-slate-500">{raw.length?`${raw.length} nguồn đã cấu hình`:'Chưa nhập tệp iCal'}</p></div>})}</div><div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Dùng khi nền tảng không cung cấp link iCal. Đồng bộ qua iCal là một chiều và có độ trễ; hệ thống không kết nối API trực tiếp và không đẩy lịch ngược lên Airbnb/Booking.com.</div></section></div>; }
+function IcalImport({propertyId}:{propertyId:Id<'properties'>}) { const catalog=useQuery((api as any).songHomestay.managementCatalog,{propertyId}) as Catalog|undefined; const upload=useAction((api as any).icalImport.uploadManualIcs); const [unitId,setUnitId]=useState(''); const [source,setSource]=useState<'Airbnb'|'Booking.com'>('Airbnb'); const [file,setFile]=useState<File|null>(null); const [message,setMessage]=useState(''); const [working,setWorking]=useState(false); async function submit(e:FormEvent){e.preventDefault();if(!file||!unitId)return;setWorking(true);try{const result=await upload({propertyId,unitId:unitId as Id<'units'>,source,icsText:await file.text()});setMessage(`Đã nhập: ${result.inserted} mới, ${result.updated} cập nhật, ${result.removed} hủy, ${result.conflicts} xung đột.`);}catch(error){setMessage(extractErrorMessage(error));}finally{setWorking(false);}} if(!catalog)return <Spinner label="Đang tải danh sách cơ sở…"/>; return <div className="grid gap-6 xl:grid-cols-[.75fr_1.25fr]"><form onSubmit={submit} className="rounded-2xl border border-sky-100 bg-white p-6 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-600"><FileUp className="h-7 w-7"/></span><h2 className="mt-5 text-xl font-extrabold text-[#10234a]">Tải lên tệp .ics</h2><div className="mt-5 space-y-4"><label><span className="field-label">Cơ sở lưu trú</span><select required className="field-input" value={unitId} onChange={(e)=>setUnitId(e.target.value)}><option value="">Chọn cơ sở</option>{catalog.units.map((unit)=><option key={unit.unitId} value={unit.unitId}>{unit.name}</option>)}</select></label><label><span className="field-label">Nguồn dữ liệu</span><select className="field-input" value={source} onChange={(e)=>setSource(e.target.value as typeof source)}><option>Airbnb</option><option>Booking.com</option></select></label><label><span className="field-label">Tệp iCal (tối đa 1 MB)</span><input required accept=".ics,text/calendar" type="file" className="field-input" onChange={(e)=>setFile(e.target.files?.[0]??null)}/></label><button className="btn-primary w-full justify-center" disabled={working||!file||!unitId}>{working?<><RefreshCw className="h-4 w-4 animate-spin"/>Đang nhập…</>:<>Nhập dữ liệu iCal</>}</button>{message?<p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{message}</p>:null}</div></form><section className="rounded-2xl border border-sky-100 bg-white p-6 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Lần nhập gần nhất theo cơ sở</h2><div className="mt-4 space-y-3">{catalog.units.map((unit)=>{const raw=(unit as any).icalImports??[];return <div key={unit.unitId} className="rounded-xl border border-slate-100 p-4"><h3 className="font-bold text-slate-800">{unit.name}</h3><p className="mt-1 text-sm text-slate-500">{raw.length?`${raw.length} nguồn đã cấu hình`:'Chưa nhập tệp iCal'}</p></div>})}</div><div className="mt-6 rounded-xl border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-[#10234a]">Dùng khi nền tảng không cung cấp link iCal. Đồng bộ qua iCal là một chiều và có độ trễ; hệ thống không kết nối API trực tiếp và không đẩy lịch ngược lên Airbnb/Booking.com.</div></section></div>; }

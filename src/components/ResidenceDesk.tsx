@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { ChevronDown, Eye, EyeOff, Search } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Eye, EyeOff, FilePlus2, Mail, Pencil, Phone, Plus, Search } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { extractErrorMessage } from './ErrorMessage';
 import { Spinner } from './Spinner';
+import { daysBetween, todayIso } from '../lib/dates';
+import { stayRange } from '../lib/songBookingStatus';
 
 type RecordRow = FunctionReturnType<
   typeof api.residence.listForProperty
 >[number];
 
-const STAY_HEADERS = ['Mã bản ghi', 'Mã Booking', 'Khách hàng', 'Quốc tịch', 'Giấy tờ', 'Cơ sở lưu trú', 'Thời gian lưu trú', 'Trạng thái', 'Thao tác'];
-const LONG_STAY_HEADERS = ['Mã bản ghi', 'Khách lưu trú', 'Booking', 'Cơ sở lưu trú', 'Thời gian lưu trú', 'Trạng thái', 'Thao tác'];
+const STAY_HEADERS = ['Mã bản ghi', 'Mã booking', 'Khách hàng', 'Liên hệ', 'Giấy tờ', 'Cơ sở lưu trú', 'Thời gian lưu trú', 'Trạng thái', 'Thao tác'];
+const LONG_STAY_HEADERS = ['Mã bản ghi', 'Khách lưu trú', 'Liên hệ', 'Booking', 'Cơ sở lưu trú', 'Thời gian lưu trú', 'Trạng thái', 'Thao tác'];
 
 function DocumentCell({ row }: { row: RecordRow }) {
   const [open, setOpen] = useState(false);
@@ -114,8 +117,8 @@ function StatusBadge({ done, label }: { done: boolean; label: string }) {
   return (
     <span
       className={
-        'whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ' +
-        (done ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800')
+        'inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ' +
+        (done ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')
       }
     >
       {label}
@@ -123,11 +126,41 @@ function StatusBadge({ done, label }: { done: boolean; label: string }) {
   );
 }
 
+/** Days from today until check-in decide how urgent a missing declaration is. */
+const URGENT_DAYS = 3;
+const FILTERS = { urgent: 'Cần khai báo ngay', pending: 'Chưa ghi nhận', done: 'Đã ghi nhận', all: 'Tất cả' } as const;
+type Filter = keyof typeof FILTERS;
+
+function urgencyLabel(start: string, end: string, today: string): { label: string; urgent: boolean } {
+  if (start <= today && end > today) return { label: 'Đang lưu trú', urgent: true };
+  if (end <= today) return { label: 'Đã trả phòng', urgent: false };
+  const days = daysBetween(today, start);
+  if (days === 0) return { label: 'Nhận phòng hôm nay', urgent: true };
+  if (days === 1) return { label: 'Nhận phòng ngày mai', urgent: true };
+  return { label: `Còn ${days} ngày`, urgent: days <= URGENT_DAYS };
+}
+
+function Contact({ phone, email }: { phone?: string; email?: string }) {
+  if (!phone && !email) return <span className="text-slate-400">—</span>;
+  return (
+    <span className="flex flex-col text-xs leading-5">
+      {phone ? <a className="inline-flex items-center gap-1 font-semibold text-[#10234a] hover:text-[#1565a8]" href={`tel:${phone.replace(/\s/g, '')}`}><Phone className="h-3.5 w-3.5" aria-hidden="true" />{phone}</a> : null}
+      {email ? <a className="inline-flex items-center gap-1 text-slate-500 hover:text-[#1565a8]" href={`mailto:${email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" />{email}</a> : null}
+    </span>
+  );
+}
+
+const primaryAction = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#0b2e4f] px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#1565a8]';
+const secondaryAction = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-sky-200 bg-white px-3.5 py-1.5 text-xs font-bold text-[#1565a8] transition hover:bg-sky-50';
+
 export function ResidenceDesk({
   propertyId,
+  timezone = 'Asia/Ho_Chi_Minh',
 }: {
   propertyId: Id<'properties'>;
+  timezone?: string;
 }) {
+  const today = todayIso(timezone);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   useEffect(() => {
@@ -140,8 +173,12 @@ export function ResidenceDesk({
   const bookings = useQuery(api.residence.bookingOptions, { propertyId });
   const [initialBooking, setInitialBooking] = useState('');
   const verify = useMutation(api.residence.verifyRegistration);
-  // Second tab: tạm trú registration for guests on long-stay bookings.
-  const [longStay, setLongStay] = useState(false);
+  // Second tab: tạm trú registration for guests staying 30+ nights. Tab and filter live in the URL (convention #12).
+  const [params, setParams] = useSearchParams();
+  const longStay = params.get('tab') === 'tam-tru';
+  const rawFilter = params.get('filter') ?? '';
+  const filter: Filter = rawFilter in FILTERS ? rawFilter as Filter : 'urgent';
+  const setParam = (key: string, value: string) => setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(key, value); else next.delete(key); return next; }, { replace: true });
   const [form, setForm] = useState<RecordRow | 'new' | null>(null);
   const [statusRow, setStatusRow] = useState<RecordRow | null>(null);
   const [error, setError] = useState('');
@@ -151,16 +188,23 @@ export function ResidenceDesk({
   const declarations = shown.filter((row) => row.registrationType === 'tam_tru');
   const longStayRows = declarations.filter((row) => row.longStay);
   const needle = foldText(debounced);
-  const pendingBookings = longStay
-    ? []
-    : (bookings?.filter(
-        (b) =>
-          b.adults > allDeclarations.filter((r) => r.bookingId === b.id).length &&
-          (!needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle)),
-      ) ?? []);
-  const empty = longStay
-    ? !longStayRows.length
-    : !declarations.length && !pendingBookings.length;
+  // Bookings still missing a declaration, nearest check-in first.
+  const pendingBookings = (bookings ?? [])
+    .filter((b) => b.status !== 'external' && b.adults > allDeclarations.filter((r) => r.bookingId === b.id).length)
+    .filter((b) => !needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle))
+    .map((b) => ({ ...b, due: urgencyLabel(b.start, b.end, today) }))
+    .sort((a, b) => Number(b.due.urgent) - Number(a.due.urgent) || a.start.localeCompare(b.start));
+  const urgentCount = pendingBookings.filter((b) => b.due.urgent).length + declarations.filter((r) => r.status === 'declared' && urgencyLabel(r.bookingCheckIn, r.checkOutDate.slice(0, 10), today).urgent).length;
+  const recordRows = declarations
+    .filter((row) => {
+      const done = row.status !== 'declared';
+      if (filter === 'done') return done;
+      if (filter === 'pending') return !done;
+      if (filter === 'urgent') return !done && urgencyLabel(row.bookingCheckIn, row.checkOutDate.slice(0, 10), today).urgent;
+      return true;
+    });
+  const bookingRows = filter === 'done' ? [] : filter === 'urgent' ? pendingBookings.filter((b) => b.due.urgent) : pendingBookings;
+  const empty = longStay ? !longStayRows.length : !recordRows.length && !bookingRows.length;
   function startForm(id = '') {
     setInitialBooking(id);
     setForm('new');
@@ -173,11 +217,12 @@ export function ResidenceDesk({
       setError(extractErrorMessage(e));
     }
   }
+  const chip = (active: boolean) => `whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition ${active ? 'bg-white text-[#0b2e4f] shadow-sm' : 'text-slate-500 hover:text-[#0b2e4f]'}`;
   return (
     <section className="card space-y-4 p-4">
-      <div className="flex flex-wrap justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-2" role="tablist">
-          {['Khai báo lưu trú', 'Tạm trú'].map((label, i) => (
+          {['Khai báo lưu trú', 'Tạm trú (trên 30 ngày)'].map((label, i) => (
             <button
               type="button"
               role="tab"
@@ -185,7 +230,7 @@ export function ResidenceDesk({
               className={longStay === Boolean(i) ? 'btn-primary' : 'btn-secondary'}
               key={label}
               onClick={() => {
-                setLongStay(Boolean(i));
+                setParam('tab', i ? 'tam-tru' : '');
                 setError('');
               }}
             >
@@ -193,34 +238,38 @@ export function ResidenceDesk({
             </button>
           ))}
         </div>
-        {!longStay && (
-          <button type="button" className="btn-primary" onClick={() => startForm()}>
-            + Mới
-          </button>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <label className="relative">
+            <span className="sr-only">Tìm booking, tên khách hoặc số giấy tờ</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input type="search" className="field-input w-72 pl-9" placeholder="Tìm booking, tên khách, số CCCD…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </label>
+          {!longStay && (
+            <button type="button" className="btn-primary whitespace-nowrap" onClick={() => startForm()}>
+              <Plus className="h-4 w-4" aria-hidden="true" />Khai báo mới
+            </button>
+          )}
+        </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-bold">
-          {longStay ? 'Danh sách tạm trú (booking dài hạn)' : 'Danh sách khách lưu trú'}
-        </h2>
-        <label className="relative w-full max-w-sm">
-          <span className="sr-only">Tìm booking, tên khách hoặc số giấy tờ</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-          <input type="search" className="field-input pl-9" placeholder="Tìm booking, tên khách, số CCCD…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </label>
-      </div>
+      {!longStay ? (
+        <div role="group" aria-label="Lọc khai báo" className="flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {(Object.keys(FILTERS) as Filter[]).map((key) => (
+            <button key={key} type="button" aria-pressed={filter === key} className={chip(filter === key)} onClick={() => setParam('filter', key === 'urgent' ? '' : key)}>
+              {FILTERS[key]}{key === 'urgent' && urgentCount ? <span className="ml-1.5 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] text-white">{urgentCount}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">Tạm trú áp dụng cho khách đặt phòng ở trên 30 ngày.</p>
+      )}
       {debounced && found === undefined ? <p className="text-sm text-slate-500">Đang tìm…</p> : null}
       {error && <p role="alert" className="text-red-700">{error}</p>}
       <div className="overflow-x-auto">
-        <table
-          className={
-            'w-full text-left text-sm ' + (longStay ? 'min-w-[48rem]' : 'min-w-[65rem]')
-          }
-        >
+        <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               {(longStay ? LONG_STAY_HEADERS : STAY_HEADERS).map((h) => (
-                <th key={h} className="p-2">
+                <th key={h} className="p-2.5">
                   {h}
                 </th>
               ))}
@@ -229,14 +278,13 @@ export function ResidenceDesk({
           <tbody>
             {longStay
               ? longStayRows.map((row) => (
-                  <tr key={row._id} className="border-t [&>td]:p-2">
-                    <td className="whitespace-nowrap">{row.recordCode}</td>
-                    <td>{row.fullName}</td>
+                  <tr key={row._id} className="border-t [&>td]:p-2.5">
+                    <td>{row.recordCode}</td>
+                    <td className="font-semibold text-[#10234a]">{row.fullName}</td>
+                    <td><Contact phone={row.contactPhone} email={row.contactEmail} /></td>
                     <td>{row.confirmationCode}</td>
-                    <td>{row.unitName}</td>
-                    <td className="whitespace-nowrap">
-                      {row.checkInDate} → {row.checkOutDate}
-                    </td>
+                    <td className="min-w-44 !whitespace-normal">{row.unitName}</td>
+                    <td>{stayRange(row.checkInDate, row.checkOutDate)}</td>
                     <td>
                       <StatusBadge
                         done={row.temporaryResidenceDeclared}
@@ -245,91 +293,69 @@ export function ResidenceDesk({
                     </td>
                     <td>
                       {row.canReveal && (
-                        <button
-                          type="button"
-                          className="text-blue-700"
-                          onClick={() => setStatusRow(row)}
-                        >
-                          Chỉnh sửa
+                        <button type="button" className={secondaryAction} onClick={() => setStatusRow(row)}>
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Cập nhật
                         </button>
                       )}
                     </td>
                   </tr>
                 ))
-              : declarations.map((row) => {
+              : <>
+                {bookingRows.map((b) => (
+                  <tr className={`border-t [&>td]:p-2.5 ${b.due.urgent ? 'bg-rose-50/40' : ''}`} key={b.id}>
+                    <td className="text-slate-400">—</td>
+                    <td className="font-semibold">{b.code}</td>
+                    <td className="font-semibold text-[#10234a]">{b.name}</td>
+                    <td><Contact phone={b.phone} email={b.email} /></td>
+                    <td className="text-slate-400">—</td>
+                    <td className="min-w-44 !whitespace-normal">{b.unit}</td>
+                    <td>{stayRange(b.start, b.end)}<span className={`mt-1 block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${b.due.urgent ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{b.due.label}</span></td>
+                    <td><StatusBadge done={false} label="Chưa khai báo" /></td>
+                    <td>
+                      <button type="button" className={primaryAction} onClick={() => startForm(b.id)}>
+                        <FilePlus2 className="h-3.5 w-3.5" aria-hidden="true" />Nhập thông tin
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {recordRows.map((row) => {
                   const done = row.status !== 'declared';
                   return (
-                    <tr key={row._id} className="border-t [&>td]:p-2">
-                      <td className="whitespace-nowrap">{row.recordCode}</td>
-                      <td>{row.confirmationCode}</td>
-                      <td>{row.fullName}</td>
-                      <td>{row.nationality}</td>
+                    <tr key={row._id} className="border-t [&>td]:p-2.5">
+                      <td>{row.recordCode}</td>
+                      <td className="font-semibold">{row.confirmationCode}</td>
+                      <td className="font-semibold text-[#10234a]">{row.fullName}<span className="block text-xs font-normal text-slate-500">{row.nationality}</span></td>
+                      <td><Contact phone={row.contactPhone} email={row.contactEmail} /></td>
+                      <td><DocumentCell row={row} /></td>
+                      <td className="min-w-44 !whitespace-normal">{row.unitName}</td>
+                      <td>{stayRange(row.checkInDate, row.checkOutDate)}</td>
+                      <td><StatusBadge done={done} label={done ? 'Đã ghi nhận' : 'Chưa ghi nhận'} /></td>
                       <td>
-                        <DocumentCell row={row} />
-                      </td>
-                      <td>{row.unitName}</td>
-                      <td className="whitespace-nowrap">
-                        {row.checkInDate} → {row.checkOutDate}
-                      </td>
-                      <td>
-                        <StatusBadge done={done} label={done ? 'Đã ghi nhận' : 'Chưa ghi nhận'} />
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {row.canReveal && (
-                          <button
-                            type="button"
-                            className="mr-3 text-blue-700"
-                            onClick={() => setForm(row)}
-                          >
-                            Chỉnh sửa
-                          </button>
-                        )}
-                        {!done && (
-                          <button
-                            type="button"
-                            className="font-bold text-blue-700"
-                            onClick={() => void record(row)}
-                          >
-                            Ghi nhận
-                          </button>
-                        )}
+                        <div className="flex gap-1.5">
+                          {!done && (
+                            <button type="button" className={primaryAction} onClick={() => void record(row)}>
+                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Ghi nhận
+                            </button>
+                          )}
+                          {row.canReveal && (
+                            <button type="button" className={secondaryAction} onClick={() => setForm(row)}>
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Sửa
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
-            {pendingBookings.map((b) => (
-              <tr className="border-t [&>td]:p-2" key={b.id}>
-                <td>—</td>
-                <td>{b.code}</td>
-                <td>{b.name}</td>
-                <td>—</td>
-                <td>—</td>
-                <td>{b.unit}</td>
-                <td className="whitespace-nowrap">
-                  {b.start} → {b.end}
-                </td>
-                <td>
-                  <StatusBadge done={false} label="Chưa ghi nhận" />
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="text-blue-700"
-                    onClick={() => startForm(b.id)}
-                  >
-                    Nhập thông tin
-                  </button>
-                </td>
-              </tr>
-            ))}
+              </>}
           </tbody>
         </table>
       </div>
       {empty && (
         <p className="p-4 text-center text-slate-500">
           {longStay
-            ? 'Chưa có khách lưu trú dài hạn. Khách cần có bản ghi khai báo lưu trú trước.'
-            : debounced ? `Không tìm thấy kết quả cho “${debounced}”.` : 'Chưa có bản ghi.'}
+            ? 'Chưa có khách lưu trú trên 30 ngày. Khách cần có bản ghi khai báo lưu trú trước.'
+            : debounced ? `Không tìm thấy kết quả cho “${debounced}”.` : filter === 'urgent' ? 'Không có booking nào cần khai báo gấp.' : 'Chưa có bản ghi.'}
         </p>
       )}
       {form && (
@@ -346,6 +372,13 @@ export function ResidenceDesk({
       )}
     </section>
   );
+}
+
+/** The declaration form for one booking, opened straight from the front-desk shift. */
+export function ResidenceRegistrationDialog({ propertyId, bookingId, close }: { propertyId: Id<'properties'>; bookingId: Id<'bookings'>; close: () => void }) {
+  const rows = useQuery(api.residence.listForProperty, { propertyId });
+  if (!rows) return null;
+  return <RegistrationForm initialBooking={bookingId} lockBooking propertyId={propertyId} rows={rows} editing={null} close={close} />;
 }
 
 /** Tạm trú status for a long-stay guest: filed with the authorities or not yet. */
@@ -394,7 +427,7 @@ function TemporaryResidenceForm({
           <br />
           Cơ sở: {row.unitName}
           <br />
-          Thời gian lưu trú: {row.checkInDate} → {row.checkOutDate}
+          Thời gian lưu trú: {stayRange(row.checkInDate, row.checkOutDate)}
         </p>
         <label>
           Trạng thái
@@ -427,12 +460,14 @@ function TemporaryResidenceForm({
 
 function RegistrationForm({
   initialBooking,
+  lockBooking = false,
   propertyId,
   rows,
   editing,
   close,
 }: {
   initialBooking: string;
+  lockBooking?: boolean;
   propertyId: Id<'properties'>;
   rows: RecordRow[];
   editing: RecordRow | null;
@@ -523,9 +558,11 @@ function RegistrationForm({
           <span id="booking-picker-label">Mã Booking</span>
           {editing ? (
             <input className="field-input" disabled value={`${editing.confirmationCode} · ${editing.fullName}`} aria-labelledby="booking-picker-label" />
+          ) : lockBooking ? (
+            <input className="field-input" disabled value={booking ? `${booking.code} · ${booking.name}` : 'Đang tải booking…'} aria-labelledby="booking-picker-label" />
           ) : (
             <BookingPicker
-              options={(options ?? []).map((b) => ({ id: b.id, label: `${b.code} · ${b.name}`, hint: `${b.unit ?? ''} · ${b.start} → ${b.end}` }))}
+              options={(options ?? []).map((b) => ({ id: b.id, label: `${b.code} · ${b.name}`, hint: `${b.unit ?? ''} · ${stayRange(b.start, b.end)}` }))}
               value={selection}
               onChange={setSelection}
             />
@@ -535,13 +572,13 @@ function RegistrationForm({
           <p className="rounded bg-blue-50 p-3 sm:col-span-2">
             Người đặt: {booking.name} · Cơ sở: {booking.unit}
             <br />
-            Thời gian lưu trú: {booking.start} → {booking.end}
+            Thời gian lưu trú: {stayRange(booking.start, booking.end)}{booking.phone || booking.email ? <><br />Liên hệ: {[booking.phone, booking.email].filter(Boolean).join(' · ')}</> : null}
           </p>
         ) : editing ? (
           <p className="rounded bg-blue-50 p-3 sm:col-span-2">
             Cơ sở: {editing.unitName}
             <br />
-            Thời gian lưu trú: {editing.checkInDate} → {editing.checkOutDate}
+            Thời gian lưu trú: {stayRange(editing.checkInDate, editing.checkOutDate)}
           </p>
         ) : null}
         <label className="sm:col-span-2" key={'name-' + selection}>

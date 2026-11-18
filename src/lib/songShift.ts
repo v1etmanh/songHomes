@@ -1,5 +1,5 @@
 import type { BookingRow } from './songAdminTypes';
-import { isOverduePending, managementStatus } from './songBookingStatus';
+import { isOverduePending, managementStatus, shortDate, stayRange } from './songBookingStatus';
 
 /**
  * Work the front desk owns today, derived from the booking snapshot.
@@ -49,11 +49,11 @@ export function derivedNotifications(bookings: BookingRow[], today: string): Shi
   const shift = shiftOverview(bookings, today);
   const out: ShiftNotification[] = [];
   for (const row of shift.webPending) {
-    out.push({ id: `web:${row.confirmationCode}`, tone: 'alert', title: `Đơn website chờ xác nhận ${row.confirmationCode}`, detail: `${row.guestName} · ${row.unitName} · ${row.checkIn} → ${row.checkOut}`, to: `/admin/bookings?status=pending&booking=${encodeURIComponent(row.confirmationCode)}` });
+    out.push({ id: `web:${row.confirmationCode}`, tone: 'alert', title: `Đơn website chờ xác nhận ${row.confirmationCode}`, detail: `${row.guestName} · ${row.unitName} · ${stayRange(row.checkIn, row.checkOut)}`, to: `/admin/bookings?status=pending&booking=${encodeURIComponent(row.confirmationCode)}` });
   }
   for (const row of shift.overduePending) {
     if (row.source === 'online') continue; // already listed above
-    out.push({ id: `overdue:${row.confirmationCode}`, tone: 'alert', title: `Booking ${row.confirmationCode} quá hạn xác nhận`, detail: `${row.guestName} · ${row.unitName} · đã đến ngày ${row.checkIn}`, to: `/admin/bookings?status=pending&booking=${encodeURIComponent(row.confirmationCode)}` });
+    out.push({ id: `overdue:${row.confirmationCode}`, tone: 'alert', title: `Booking ${row.confirmationCode} quá hạn xác nhận`, detail: `${row.guestName} · ${row.unitName} · đã đến ngày ${shortDate(row.checkIn)}`, to: `/admin/bookings?status=pending&booking=${encodeURIComponent(row.confirmationCode)}` });
   }
   for (const row of shift.residenceMissing) {
     out.push({ id: `residence:${row.confirmationCode}`, tone: 'info', title: `Thiếu khai báo tạm trú ${row.confirmationCode}`, detail: `${row.guestName} · ${row.unitName} · còn ${row.residenceMissing} khách`, to: '/admin/residence' });

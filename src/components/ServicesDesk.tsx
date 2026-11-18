@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
+import { stayRange } from '../lib/songBookingStatus';
 import { formatMoney } from '../lib/money';
 import { extractErrorMessage } from './ErrorMessage';
 import { Spinner } from './Spinner';
@@ -86,7 +87,7 @@ export function ServicesDesk({
                     <td>{row.code}</td>
                     <td>{row.unit}</td>
                     <td className="whitespace-nowrap">
-                      {row.checkIn} → {row.checkOut}
+                      {stayRange(row.checkIn, row.checkOut)}
                     </td>
                     <td>{row.service}</td>
                     <td>

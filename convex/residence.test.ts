@@ -1,3 +1,4 @@
+import { addDays } from '../shared/pricing';
 /// <reference types="vite/client" />
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -202,7 +203,8 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
     expect((await desk.query(api.residence.listForProperty,{propertyId})).find(r=>r._id===resident)).toMatchObject({longStay:false,temporaryResidenceDeclared:false});
     await t.run(async ctx=>{
       const booking=await ctx.db.get(guestData.bookingId as Id<'bookings'>);
-      await ctx.db.patch(booking!.unitTypeId,{name:'Nhà 2PN (Lưu trú dài hạn)',slug:'nha-dai-han-2pn'});
+      // Tạm trú is decided by stay length (30+ nights), not the unit type.
+      await ctx.db.patch(booking!._id,{checkOut:addDays(booking!.checkIn,31),nights:31});
     });
     await expect(t.mutation(api.residence.setTemporaryResidenceDeclared,{registrationId:resident,declared:true})).rejects.toThrow();
     await expect(desk.mutation(api.residence.setTemporaryResidenceDeclared,{registrationId:away._id,declared:true})).rejects.toThrow();
@@ -218,7 +220,8 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
     const plain={name:'Căn hộ 2PN',slug:'can-ho-2pn'};
     expect(isLongStay(plain,'2026-11-01','2026-11-30')).toBe(false);
     expect(isLongStay(plain,'2026-11-01','2026-12-01')).toBe(true);
-    expect(isLongStay({name:'Nhà Sóng (Ưu Đãi Lưu Trú Dài Hạn)',slug:'x'},'2026-11-01','2026-11-02')).toBe(true);
+    // Tạm trú is about the length of the stay: a short stay in a long-term unit is a normal lưu trú.
+    expect(isLongStay({name:'Nhà Sóng (Ưu Đãi Lưu Trú Dài Hạn)',slug:'x',longStay:true},'2026-11-01','2026-11-02')).toBe(false);
   });
 
   it('purges only declarations whose privacy retention period has expired', async () => {

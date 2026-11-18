@@ -30,6 +30,7 @@ import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { Spinner } from './Spinner';
 import { SongNotificationBell } from './song/SongNotificationBell';
+import { SongViewSwitch } from './song/SongViewSwitch';
 import { useStaffGate } from '../lib/useStaff';
 
 interface AssignedProperty {
@@ -255,6 +256,7 @@ export function AdminShell() {
               </div>
             </details>
           ) : null}
+          {property.slug === 'song-homestay' ? <SongViewSwitch role={property.role} /> : null}
           {property.slug === 'song-homestay' ? <SongNotificationBell propertyId={property.propertyId} timezone={property.timezone} /> : null}
           <details className="relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50">

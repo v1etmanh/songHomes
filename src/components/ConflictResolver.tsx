@@ -5,6 +5,7 @@ import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { extractErrorMessage } from './ErrorMessage';
 import { Spinner } from './Spinner';
+import { stayRange } from '../lib/songBookingStatus';
 
 type Side = {
   bookingId: Id<'bookings'>;
@@ -19,7 +20,7 @@ type Side = {
 };
 
 const PLATFORM_BY_LABEL: Record<string, 'airbnb' | 'booking'> = { Airbnb: 'airbnb', 'Booking.com': 'booking' };
-const MANUAL_LABEL: Record<string, string> = { zalo: 'Zalo', facebook: 'Facebook', phone: 'Điện thoại', walk_in: 'Khách trực tiếp', other: 'Khác' };
+const MANUAL_LABEL: Record<string, string> = { zalo: 'Zalo', facebook: 'Facebook', phone: 'Phone', walk_in: 'Khác', other: 'Khác' };
 const STATUS_LABEL: Record<string, string> = { hold: 'Đang giữ chỗ', pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', checked_in: 'Đang lưu trú', external: 'Từ OTA' };
 
 function sourceLabel(source: string): string {
@@ -33,15 +34,19 @@ function isExternal(side: Side) {
   return side.status === 'external';
 }
 
-/** Double-booking resolution: both sides of every overlap, with the actions each side allows. */
-export function ConflictResolver({ propertyId }: { propertyId: Id<'properties'> }) {
+/**
+ * Double-booking resolution: both sides of every overlap, with the actions each side allows.
+ * With `bookingId`, only the overlaps that booking is part of (the front desk's per-row "Xử lý").
+ */
+export function ConflictResolver({ propertyId, bookingId }: { propertyId: Id<'properties'>; bookingId?: Id<'bookings'> }) {
   const data = useQuery(api.icalImport.dashboardForProperty, { propertyId });
   const sim = useQuery(api.otaSimulator.status, {});
   if (data === undefined || sim === undefined) return <Spinner label="Đang tải cảnh báo…" />;
   if (data === null) return null;
   const listings = sim.enabled ? sim.listings : [];
 
-  if (!data.conflicts.length) {
+  const conflicts = bookingId ? data.conflicts.filter((c) => c.bookingA.bookingId === bookingId || c.bookingB.bookingId === bookingId) : data.conflicts;
+  if (!conflicts.length) {
     return (
       <section className="rounded-2xl border border-emerald-200 bg-white p-10 text-center shadow-sm">
         <ShieldCheck className="mx-auto h-10 w-10 text-emerald-600" />
@@ -53,7 +58,7 @@ export function ConflictResolver({ propertyId }: { propertyId: Id<'properties'> 
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-6 text-slate-600 shadow-sm">
+      {bookingId ? null : <section className="rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-6 text-slate-600 shadow-sm">
         <h2 className="font-extrabold text-[#10234a]">Cách xử lý</h2>
         <ol className="mt-2 list-decimal space-y-1 pl-5">
           <li>Chọn booking được giữ: thường là bên đặt trước (không bị gắn cờ) hoặc bên đã thanh toán.</li>
@@ -61,8 +66,8 @@ export function ConflictResolver({ propertyId }: { propertyId: Id<'properties'> 
           <li>Booking từ Airbnb/Booking.com: OpenStays không sửa được bên đó. Đổi ngày, chuyển chỗ hoặc hủy trên nền tảng, rồi bấm <strong>Đồng bộ lại</strong>; cảnh báo tự biến mất khi hết trùng. Nếu đã sắp xếp cho khách OTA ở căn khác, dùng <strong>Chuyển căn</strong>.</li>
           <li><strong>Đánh dấu đã xử lý</strong> chỉ tắt cảnh báo khi đã giải quyết bên ngoài và đang chờ lần đồng bộ sau.</li>
         </ol>
-      </section>
-      {data.conflicts.map((conflict) => (
+      </section>}
+      {conflicts.map((conflict) => (
         <ConflictCard
           key={conflict.conflictId}
           propertyId={propertyId}
@@ -179,7 +184,7 @@ function BookingSide({ propertyId, unitId, unitSlug, side, freeUnits, recommende
         {recommended ? <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">Nên xử lý</span> : null}
       </div>
       <p className="mt-2 text-sm text-slate-700">{external ? 'Khách đặt qua ' + label : side.guestName}</p>
-      <p className="text-sm text-slate-500">{side.checkIn} → {side.checkOut} · {side.nights} đêm · {STATUS_LABEL[side.status] ?? side.status}</p>
+      <p className="text-sm text-slate-500">{stayRange(side.checkIn, side.checkOut)} · {side.nights} đêm · {STATUS_LABEL[side.status] ?? side.status}</p>
 
       {external ? (
         <div className="mt-3 flex flex-wrap gap-2">

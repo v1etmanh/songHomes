@@ -11,10 +11,13 @@ const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 /** Stays of this many nights or more need a tạm trú registration with the authorities. */
 export const LONG_STAY_NIGHTS = 30;
 
-/** Long stay = booked in a long-term unit type (flag, or legacy dài hạn naming), or simply long enough. */
-export function isLongStay(unitType: Pick<Doc<'unitTypes'>, 'name' | 'slug' | 'longStay'> | null | undefined, checkIn: string, checkOut: string) {
-  const marked = unitType ? unitType.longStay === true || /dai-han/.test(unitType.slug) || /dài hạn/i.test(unitType.name) : false;
-  return marked || (isIsoDate(checkIn.slice(0, 10)) && isIsoDate(checkOut.slice(0, 10)) && daysBetween(checkIn.slice(0, 10), checkOut.slice(0, 10)) >= LONG_STAY_NIGHTS);
+/**
+ * Tạm trú applies to stays of more than 30 days (30+ nights), whatever unit
+ * type was booked: a short stay in a monthly-rental unit is a normal lưu trú.
+ * The unit-type argument is kept for call-site compatibility.
+ */
+export function isLongStay(_unitType: Pick<Doc<'unitTypes'>, 'name' | 'slug' | 'longStay'> | null | undefined, checkIn: string, checkOut: string) {
+  return isIsoDate(checkIn.slice(0, 10)) && isIsoDate(checkOut.slice(0, 10)) && daysBetween(checkIn.slice(0, 10), checkOut.slice(0, 10)) >= LONG_STAY_NIGHTS;
 }
 const documentTypeArg = v.union(v.literal('cccd'), v.literal('cmnd'), v.literal('passport'), v.literal('other'));
 const DOCUMENT_PATTERNS: Record<string, { pattern: RegExp; message: string }> = {
@@ -443,6 +446,9 @@ export const listForProperty = query({
         stayAddress: row.stayAddress, createdAt: row.createdAt, residentId: row.residentId,
         recordCode: row.recordCode ?? legacyRecordCode(row),
         gender: canReveal ? row.gender : undefined,
+        contactPhone: canReveal ? (row.phone || (booking?.guestId ? (await ctx.db.get(booking.guestId))?.phone : undefined) || undefined) : undefined,
+        contactEmail: canReveal && booking?.guestId ? (await ctx.db.get(booking.guestId))?.email || undefined : undefined,
+        bookingCheckIn: booking?.checkIn ?? row.checkInDate.slice(0, 10),
         confirmationCode: booking?.confirmationCode ?? 'UNKNOWN',
         unitName: booking ? (unitNameById.get(booking.unitId) ?? 'Phòng') : 'Phòng',
         bookingStatus: booking?.status ?? 'unknown',
@@ -536,12 +542,22 @@ export const fullDocument = query({
 export const bookingOptions = query({
   args: {propertyId: v.id('properties')},
   handler: async (ctx, {propertyId}) => {
-    if (process.env.DEMO_MODE !== 'true') await requirePropertyCapability(ctx, propertyId, 'booking.read');
+    // Guest contact (to reach them for the declaration) only for an authenticated staff reader, never the anonymous demo.
+    let staff = false;
+    if (process.env.DEMO_MODE !== 'true') { await requirePropertyCapability(ctx, propertyId, 'booking.read'); staff = true; }
+    else if (await getAuthUserId(ctx)) {
+      try { await requirePropertyCapability(ctx, propertyId, 'booking.read'); staff = true; }
+      catch (error) { if (!(error instanceof ConvexError)) throw error; }
+    }
     const bookings = await ctx.db.query('bookings').withIndex('by_property_checkIn', q => q.eq('propertyId', propertyId)).order('desc').collect();
-    return Promise.all(bookings.filter(b => ['pending','confirmed','checked_in','checked_out','external'].includes(b.status)).map(async b => ({
-      id: b._id, code: b.confirmationCode, name: (b.guestId && (await ctx.db.get(b.guestId))?.name) || b.notes[0]?.text || 'Khách OTA',
-      adults: b.adults, unit: (await ctx.db.get(b.unitId))?.name, start: b.checkIn, end: b.checkOut,
-    })));
+    return Promise.all(bookings.filter(b => ['pending','confirmed','checked_in','checked_out','external'].includes(b.status)).map(async b => {
+      const guest = b.guestId ? await ctx.db.get(b.guestId) : null;
+      return {
+        id: b._id, code: b.confirmationCode, name: guest?.name || b.notes[0]?.text || 'Khách OTA',
+        adults: b.adults, unit: (await ctx.db.get(b.unitId))?.name, start: b.checkIn, end: b.checkOut, status: b.status,
+        phone: staff ? guest?.phone || undefined : undefined, email: staff ? guest?.email || undefined : undefined,
+      };
+    }));
   },
 });
 

@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { daysBetween, isIsoDate, enumerateNights, generateConfirmationCode } from '../shared/pricing';
+import { daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { assertResidenceComplete, residenceProgress } from './residence';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
@@ -159,13 +159,14 @@ export const serviceOverview = query({
   },
 });
 
+/** Mark a booked service prepared/done. Arriving (confirmed) guests count too: the desk prepares before check-in. */
 export const finishService = mutation({
   args: {propertyId: v.id('properties'), lineId: v.id('bookingAddOns')},
   handler: async (ctx, args) => {
     await requireWrite(ctx, args.propertyId, 'song.service.complete');
     const line = await ctx.db.get(args.lineId);
     const booking = line && await ctx.db.get(line.bookingId);
-    if (!line || booking?.propertyId !== args.propertyId || booking.status !== 'checked_in') throw new ConvexError('SERVICE_NOT_ACTIVE');
+    if (!line || booking?.propertyId !== args.propertyId || !['confirmed', 'checked_in'].includes(booking.status)) throw new ConvexError('SERVICE_NOT_ACTIVE');
     if (!line.completedAt) await ctx.db.patch(line._id, {completedAt: Date.now()});
   },
 });
@@ -674,7 +675,10 @@ export const adminSnapshot = query({
     let serviceRevenueCents = 0;
     const sourceCounts: Record<string, number> = {};
     const dailyRevenue: Record<string, { roomCents: number; serviceCents: number }> = {};
-    const serviceUsage = new Map(addOns.map((row) => [String(row._id), { name: row.name, count: 0, revenueCents: 0 }]));
+    // Only the services on sale today; retired add-ons keep their history in bookingAddOns but leave the chart.
+    const serviceUsage = new Map(addOns.filter((row) => row.active).sort((x, y) => x.sortOrder - y.sortOrder).map((row) => [String(row._id), { name: row.name, count: 0, revenueCents: 0 }]));
+    // Revenue is recognised up to today: a stay that has not started yet is not income for the period.
+    const today = todayInTimezone(property.timezone);
     for (const booking of inRange) {
       const [guest, lines] = await Promise.all([
         booking.guestId ? ctx.db.get(booking.guestId) : null,
@@ -683,13 +687,14 @@ export const adminSnapshot = query({
       const serviceCents = lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);
       const totalCents = booking.priceBreakdown?.totalCents ?? 0;
       const roomCents = Math.max(0, totalCents - serviceCents);
-      if (booking.checkIn >= args.startDate && ['confirmed', 'checked_in', 'checked_out'].includes(booking.status)) {
+      const recognised = booking.checkIn >= args.startDate && booking.checkIn <= today && ['confirmed', 'checked_in', 'checked_out'].includes(booking.status);
+      if (recognised) {
         roomRevenueCents += roomCents;
         serviceRevenueCents += serviceCents;
         const day = dailyRevenue[booking.checkIn] ?? { roomCents: 0, serviceCents: 0 };
         day.roomCents += roomCents; day.serviceCents += serviceCents; dailyRevenue[booking.checkIn] = day;
       }
-      for (const line of lines) {
+      for (const line of recognised ? lines : []) {
         const usage = serviceUsage.get(String(line.addOnId));
         if (usage) { usage.count += line.quantity; usage.revenueCents += line.unitPriceCents * line.quantity; }
       }

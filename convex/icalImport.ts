@@ -700,7 +700,7 @@ async function insertExternalBooking(
     source,
     externalUid: event.uid,
     syncConflict: conflict,
-    confirmationCode: `EXT-${externalCode(event.uid)}`,
+    confirmationCode: await uniqueExternalCode(ctx, event.uid, source),
     statusHistory: [{ status: 'external', ts: now }],
     notes: event.summary ? [{ ts: now, text: event.summary, by: source }] : [],
     createdAt: now,
@@ -749,10 +749,64 @@ async function rewriteExternalNights(
 }
 
 /** Short, stable, human-glanceable suffix for an external confirmation code. */
-function externalCode(uid: string): string {
-  const cleaned = uid.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  return (cleaned.slice(0, 8) || 'UNKNOWN').padEnd(6, '0');
+/** Two-letter channel tag so staff can read the platform off the code. */
+function channelTag(source: string): string {
+  const label = source.replace(/^(ical|manual|upload):/, '').toLowerCase();
+  if (label.includes('airbnb')) return 'AB';
+  if (label.includes('booking')) return 'BK';
+  return 'OT';
 }
+
+/** FNV-1a 32-bit, rendered as 6 base-32 characters (no I/L/O/U). */
+function uidHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  let out = '';
+  for (let i = 0; i < 6; i += 1) { out += alphabet[hash % 32]; hash = Math.floor(hash / 32); }
+  return out;
+}
+
+export function externalCode(uid: string, source: string, salt = 0): string {
+  return `EXT-${channelTag(source)}${uidHash(salt ? `${uid}#${salt}` : uid)}`;
+}
+
+/**
+ * Confirmation codes are the staff-facing primary key, so every imported event
+ * gets its own: the code hashes the full UID (the old 8-character UID prefix
+ * collided for every simulator event, e.g. "EXT-SIMAIRBN"), and a salted
+ * retry covers the rare hash collision.
+ */
+export async function uniqueExternalCode(ctx: MutationCtx, uid: string, source: string, self?: Id<'bookings'>): Promise<string> {
+  for (let salt = 0; ; salt += 1) {
+    const code = externalCode(uid, source, salt);
+    const clash = await ctx.db.query('bookings').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).first();
+    if (!clash || clash._id === self) return code;
+  }
+}
+
+/**
+ * One-off: give every imported booking whose code is shared with another
+ * booking its own code. Run: npx convex run icalImport:recodeDuplicateExternalCodes
+ */
+export const recodeDuplicateExternalCodes = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const external = (await ctx.db.query('bookings').collect()).filter((b) => b.externalUid && /^EXT-/.test(b.confirmationCode));
+    const count = new Map<string, number>();
+    for (const b of external) count.set(b.confirmationCode, (count.get(b.confirmationCode) ?? 0) + 1);
+    let recoded = 0;
+    for (const b of external) {
+      if ((count.get(b.confirmationCode) ?? 0) < 2) continue;
+      await ctx.db.patch(b._id, { confirmationCode: await uniqueExternalCode(ctx, b.externalUid!, b.source, b._id), updatedAt: Date.now() });
+      recoded += 1;
+    }
+    return { recoded };
+  },
+});
 
 /**
  * Re-evaluates all remaining external bookings on a unit after a conflicting

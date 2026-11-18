@@ -226,7 +226,8 @@ export const run = internalMutation({
         cursor = addDays(checkOut, ri(0, 6));
         const createdAt = Math.min(now - HOUR_MS, localMidnightMs(checkIn) - ri(1, 20) * DAY_MS);
 
-        if (rand() < 0.14) {
+        // About half of all stays arrive from Airbnb / Booking.com, the rest are split across direct channels.
+        if (rand() < 0.48) {
           const source = rand() < 0.5 ? 'ical:Airbnb' : 'ical:Booking.com';
           await insertExternal(ctx, unit, {
             source, startDate: checkIn, endDate: checkOut, uid: `sample-${unit.slug}-${checkIn}@example.com`,
@@ -246,7 +247,7 @@ export const run = internalMutation({
         const adults = ri(1, Math.min(capacity, 5));
         const children = Math.min(rand() < 0.3 ? ri(1, 2) : 0, capacity - adults);
         const sr = rand();
-        const source = sr < 0.38 ? 'online' : sr < 0.62 ? 'manual:zalo' : sr < 0.76 ? 'manual:facebook' : sr < 0.9 ? 'manual:phone' : 'manual:walk_in';
+        const source = sr < 0.34 ? 'online' : sr < 0.6 ? 'manual:zalo' : sr < 0.78 ? 'manual:facebook' : sr < 0.93 ? 'manual:phone' : 'manual:other';
 
         const lines: Array<{ addOn: Doc<'addOns'>; quantity: number }> = [];
         if (status !== 'cancelled' && rand() < 0.4 && addOns.length) {
