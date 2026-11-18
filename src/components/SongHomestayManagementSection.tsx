@@ -37,7 +37,7 @@ const sourceLabels = {
   other: 'Nguồn khác',
 } as const;
 
-export function SongHomestayManagementSection({ propertyId, initialTab = 'booking', showTabs = true }: { propertyId: Id<'properties'>; initialTab?: 'booking' | 'units' | 'services'; showTabs?: boolean }) {
+export function SongHomestayManagementSection({ propertyId, initialTab = 'booking', showTabs = true, onBookingCreated }: { propertyId: Id<'properties'>; initialTab?: 'booking' | 'units' | 'services'; showTabs?: boolean; onBookingCreated?: (confirmationCode: string) => void }) {
   const catalog = useQuery((api as any).songHomestay.managementCatalog, { propertyId }) as Catalog | undefined;
   const since = useMemo(() => {
     const date = new Date();
@@ -114,6 +114,7 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
       setGuestPhone('');
       setGuestEmail('');
       setNote('');
+      onBookingCreated?.(result.confirmationCode);
     } catch (error) {
       setFeedback({ kind: 'error', text: extractErrorMessage(error) });
     } finally {

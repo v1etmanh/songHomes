@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, ArrowUpRight, CalendarDays, CircleDollarSign, FileUp, Hotel, Plus, RefreshCw, Save, Upload, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CircleDollarSign, Clock3, Eye, FileUp, Hotel, Plus, RefreshCw, Save, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -8,6 +8,7 @@ import { addDays } from '../../shared/pricing';
 import { useAdminProperty } from '../components/AdminShell';
 import { extractErrorMessage } from '../components/ErrorMessage';
 import { ConflictResolver } from '../components/ConflictResolver';
+import { FrontDeskShift } from '../components/song/FrontDeskShift';
 import { IcalSyncHub } from '../components/IcalSyncHub';
 import { SongHomestayManagementSection } from '../components/SongHomestayManagementSection';
 import { Spinner } from '../components/Spinner';
@@ -16,25 +17,14 @@ import { ServicesDesk } from '../components/ServicesDesk';
 import { addMonths, startOfMonth, startOfWeek, startOfYear } from 'date-fns';
 import { todayIso, dateToIso, isoToDate, daysBetween, isIsoDate } from '../lib/dates';
 import { formatMoney } from '../lib/money';
+import type { BookingRow, Snapshot } from '../lib/songAdminTypes';
+import { CALENDAR_STATUS_FILTERS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, channelOf, managementStatus, type CalendarStatus, type ManagementStatus } from '../lib/songBookingStatus';
 
 export type SongAdminSection = 'dashboard'|'accommodations'|'bookings'|'calendar'|'ical'|'services'|'conflicts'|'residence';
 
-type BookingRow = { bookingId: Id<'bookings'>; confirmationCode: string; guestName: string; guestEmail: string; guestPhone: string; unitId: Id<'units'>; unitName: string; checkIn: string; checkOut: string; adults: number; children: number; infants?: number; pets?: number; status: string; source: string; totalCents: number; serviceCents: number; syncConflict: boolean; createdAt: number; residenceMissing?: number };
-type Snapshot = {
-  occupancyByUnit: Array<{unitId:Id<'units'>;nights:number}>;
-  newBookings: Array<{date:string; unitId:Id<'units'>; code:string}>;
-  property: { name: string; currency: string };
-  kpis: { totalBookings: number; pendingBookings: number; confirmedBookings: number; currentGuests: number; roomRevenueCents: number; serviceRevenueCents: number; totalRevenueCents: number; occupancyPercent: number; conflictCount: number };
-  bookings: BookingRow[];
-  units: Array<{ _id: Id<'units'>; name: string; status: string; sortOrder: number; type?: { name: string } }>;
-  dailyRevenue: Array<{ date: string; roomCents: number; serviceCents: number; totalCents: number }>;
-  sourceCounts: Array<{ source: string; count: number }>;
-  serviceUsage: Array<{ name: string; count: number; revenueCents: number }>;
-};
 type Catalog = { property: { currency: string }; unitTypes: Accommodation[]; units: Array<{ unitId: Id<'units'>; unitTypeId: Id<'unitTypes'>; name: string; status: string }>; addOns: Array<{ addOnId: Id<'addOns'>; name: string; priceCents: number; unitLabel: string; active: boolean }> };
 type Accommodation = { longStay: boolean; monthlyPriceCents: number | null; rates?: Array<{id:Id<'ratePlans'>; name:string; cents:number}>; unitTypeId: Id<'unitTypes'>; name: string; slug: string; description: string; photoUrls: string[]; maxOccupancy: number|null; capacityKnown: boolean; address?: string; accommodationType?: string; bedrooms?: number; bathrooms?: number; areaSqm?: number; highlights: string[]; amenities: string[]; comingSoon: boolean };
 
-const STATUS_LABELS: Record<string,string> = { hold:'Đang giữ chỗ', pending:'Chờ xác nhận', confirmed:'Đã xác nhận', checked_in:'Đang lưu trú', checked_out:'Đã hoàn thành', cancelled:'Đã hủy', external:'Đặt qua OTA', blocked:'Khóa phòng' };
 const SECTION_COPY: Record<SongAdminSection,[string,string]> = {
   dashboard:['Dashboard tổng quan','Tình hình hoạt động của Sóng Homestay trong kỳ đã chọn'], accommodations:['Quản lý chỗ nghỉ','Danh sách cơ sở, giá, sức chứa và hình ảnh'], bookings:['Quản lý booking','Tiếp nhận, tìm kiếm và xử lý booking từ mọi nguồn'], calendar:['Lịch phòng','Theo dõi ngày trống và khoảng lưu trú của từng cơ sở'], ical:['Đồng bộ dữ liệu iCal','Kéo lịch Airbnb và Booking.com về, tự động mỗi 30 phút hoặc khi bấm'], services:['Dịch vụ bổ sung','Quản lý dịch vụ và nhu cầu phát sinh theo booking'], conflicts:['Cảnh báo trùng booking','Kiểm tra và xử lý các khoảng thời gian xung đột'], residence:['Khai báo lưu trú','Quản lý khai báo lưu trú và tạm trú cho booking dài hạn'],
 };
@@ -58,7 +48,7 @@ export function SongAdminPage({ section }: { section: SongAdminSection }) {
   const customEndRaw = validIso(params.get('to')) ?? today;
   const customEnd = customEndRaw < customStart ? customStart : customEndRaw;
   const defaultStart=addDays(today,-60);
-  const defaultEnd=addDays(today,15);
+  const defaultEnd=addDays(today,365);
   const metric = METRICS[params.get('metric') ?? ''] ? params.get('metric')! : '';
   const setMetric = (value: string) => update({ metric: value });
   const date = isoToDate(anchor);
@@ -70,10 +60,13 @@ export function SongAdminPage({ section }: { section: SongAdminSection }) {
   const endDate = !filtered ? defaultEnd : selected === 'custom' ? addDays(customEnd,1) : selected === 'day' ? addDays(anchor,1) :
     selected === 'week' ? addDays(startDate,7) : dateToIso(addMonths(start, selected === 'year' ? 12 : selected === 'quarter' ? 3 : 1));
   const snapshot = useQuery((api as any).songHomestay.adminSnapshot, { propertyId: property.propertyId, startDate, endDate }) as Snapshot|undefined;
-  const [title, subtitle] = SECTION_COPY[section];
+  // Owners and managers keep the analytics dashboard and can peek at the front-desk shift view; front desk always lands on the shift.
+  const canSwitchView = section === 'dashboard' && ['owner', 'manager'].includes(property.role);
+  const deskView = section === 'dashboard' && (property.role === 'front_desk' || (canSwitchView && params.get('view') === 'desk'));
+  const [title, subtitle] = deskView ? ['Công việc vận hành trong ca', 'Check-in / check-out hôm nay, cảnh báo trùng lịch, đơn website chờ xác nhận và checklist trong ca'] : SECTION_COPY[section];
   if (property.slug !== 'song-homestay') return <div className="card p-8"><h1 className="text-xl font-semibold">Màn hình dành riêng cho Sóng Homestay</h1><p className="mt-2 text-stone-600">Hãy chọn property Sóng Homestay ở thanh trên cùng.</p></div>;
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-extrabold uppercase tracking-[.2em] text-[#328ee0]">Sóng Homestay</p><h1 className="mt-1 text-2xl font-extrabold text-[#10234a]">{title}</h1><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{filtered && <div className="flex max-w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-extrabold uppercase tracking-[.2em] text-[#328ee0]">Sóng Homestay</p><h1 className="mt-1 text-2xl font-extrabold text-[#10234a]">{title}</h1><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{canSwitchView && <div role="group" aria-label="Góc nhìn dashboard" className="flex shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">{([['', 'Chủ nhà'], ['desk', 'Lễ tân']] as const).map(([value, label]) => <button type="button" key={label} aria-pressed={deskView === (value === 'desk')} onClick={() => update({ view: value })} className={`px-3 py-2 font-semibold ${deskView === (value === 'desk') ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>}{filtered && !deskView && <div className="flex max-w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
       <div role="group" aria-label="Kỳ hiển thị" className="flex shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">
         {allowedPeriods.map(value => <button type="button" key={value} aria-pressed={selected===value} onClick={() => update({ period: value })} className={`px-3 py-2 font-semibold ${selected===value ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{PERIOD_LABELS[value]}</button>)}
       </div>
@@ -81,7 +74,7 @@ export function SongAdminPage({ section }: { section: SongAdminSection }) {
       <input aria-label="Đến ngày" className="field-input w-auto shrink-0" type="date" min={customStart} value={customEnd} onChange={e=>{if(e.target.value>=customStart)update({ to: e.target.value })}}/></> :
       <input aria-label="Ngày trong kỳ" className="field-input w-auto shrink-0" type="date" value={anchor} onChange={e=>{if(e.target.value)update({ date: e.target.value === today ? '' : e.target.value })}}/>}
       </div>}</div>
-    {snapshot === undefined ? <Spinner label="Đang tổng hợp dữ liệu Sóng Homestay…" /> : section==='dashboard' ? <Dashboard snapshot={snapshot} metric={metric} setMetric={setMetric} startDate={startDate} endDate={endDate} /> : section==='accommodations' ? <Accommodations propertyId={property.propertyId} /> : section==='bookings' ? <Bookings propertyId={property.propertyId} snapshot={snapshot} /> : section==='calendar' ? <Calendar snapshot={snapshot} startDate={startDate} endDate={endDate} /> : section==='ical' ? <div className="space-y-6"><IcalSyncHub propertyId={property.propertyId} /><details className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><summary className="cursor-pointer font-extrabold text-[#10234a]">Nhập tệp .ics thủ công</summary><div className="mt-4"><IcalImport propertyId={property.propertyId} /></div></details></div> : section==='services' ? <ServicesDesk propertyId={property.propertyId} startDate={startDate} endDate={endDate} currency={snapshot.property.currency}/> : section==='conflicts' ? <ConflictResolver propertyId={property.propertyId} /> : <ResidenceDesk propertyId={property.propertyId} />}
+    {deskView ? <FrontDeskShift propertyId={property.propertyId} timezone={property.timezone} /> : snapshot === undefined ? <Spinner label="Đang tổng hợp dữ liệu Sóng Homestay…" /> : section==='dashboard' ? <Dashboard snapshot={snapshot} metric={metric} setMetric={setMetric} startDate={startDate} endDate={endDate} /> : section==='accommodations' ? <Accommodations propertyId={property.propertyId} /> : section==='bookings' ? <Bookings propertyId={property.propertyId} snapshot={snapshot} /> : section==='calendar' ? <Calendar snapshot={snapshot} startDate={startDate} endDate={endDate} /> : section==='ical' ? <div className="space-y-6"><IcalSyncHub propertyId={property.propertyId} /><details className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><summary className="cursor-pointer font-extrabold text-[#10234a]">Nhập tệp .ics thủ công</summary><div className="mt-4"><IcalImport propertyId={property.propertyId} /></div></details></div> : section==='services' ? <ServicesDesk propertyId={property.propertyId} startDate={startDate} endDate={endDate} currency={snapshot.property.currency}/> : section==='conflicts' ? <ConflictResolver propertyId={property.propertyId} /> : <ResidenceDesk propertyId={property.propertyId} />}
   </div>;
 }
 
@@ -176,7 +169,6 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><ConflictTable rows={snapshot.bookings.filter((row)=>row.syncConflict).slice(0,4)} /><section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm"><img src="/song-homestay/hero.webp" alt="Sóng Homestay bên biển Mỹ Khê" className="h-36 w-full object-cover"/><div className="p-5"><h2 className="font-extrabold text-[#10234a]">Thao tác nhanh</h2><div className="mt-4 grid grid-cols-2 gap-3"><Link className="rounded-xl bg-blue-50 p-3 text-center text-sm font-bold text-blue-700" to="/admin/bookings?new=1">Thêm booking</Link><Link className="rounded-xl bg-emerald-50 p-3 text-center text-sm font-bold text-emerald-700" to="/admin/accommodations">Quản lý phòng</Link><Link className="rounded-xl bg-violet-50 p-3 text-center text-sm font-bold text-violet-700" to="/admin/ical">Đồng bộ iCal</Link></div></div></section></div>
     <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ</h2><div className="mt-4 grid gap-4 md:grid-cols-3">{snapshot.serviceUsage.map((row)=><div key={row.name} className="rounded-xl bg-slate-50 p-4"><h3 className="font-bold">{row.name}</h3><p className="mt-2 text-2xl font-extrabold text-blue-700">{row.count}</p><p className="text-xs text-slate-500">{money(row.revenueCents)}</p></div>)}</div></section>
-    <Calendar snapshot={snapshot} startDate={startDate} endDate={endDate} compact />
   </>;
 }
 
@@ -566,56 +558,109 @@ function AccommodationEditor({
   );
 }
 
-function StatusPill({ status }: { status: string }) { const color = statusColors[status] ?? '#475569'; return <span className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold" style={{ color, background: `${color}1a` }}>{STATUS_LABELS[status] ?? status}</span>; }
+function StatusPill({ status }: { status: CalendarStatus }) { const color = statusColors[status] ?? '#475569'; return <span className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold" style={{ color, background: `${color}1a` }}>{STATUS_LABELS[status]}</span>; }
+
+const BOOKING_SORTS = { newest: 'Mới nhất (vừa tạo)', checkin: 'Ngày check-in gần nhất' } as const;
+type BookingSort = keyof typeof BOOKING_SORTS;
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function Bookings({propertyId,snapshot}:{propertyId:Id<'properties'>;snapshot:Snapshot}) {
+  const { property } = useAdminProperty();
   const update=useMutation((api as any).songHomestay.updateBookingStatus);
   const [params,setParams]=useSearchParams();
+  const [toast,setToast]=useState('');
+  // Date.now() is read once per mount: "recent" means created in the 24h before this page was opened.
+  const [now]=useState(()=>Date.now());
   const search=params.get('q') ?? '';
   const creating=params.get('new')==='1';
+  const rawStatus=params.get('status') ?? '';
+  const statusFilter=(MANAGEMENT_STATUSES as string[]).includes(rawStatus) ? rawStatus as ManagementStatus : '';
+  const sort: BookingSort = params.get('sort')==='checkin' ? 'checkin' : 'newest';
+  const recentOnly=params.get('recent')==='1';
+  const just=params.get('just') ?? '';
+  const detailCode=params.get('booking') ?? '';
   const setParam=(key:string,value:string)=>setParams(prev=>{const next=new URLSearchParams(prev); if(value) next.set(key,value); else next.delete(key); return next;},{replace:true});
-  const rows=snapshot.bookings.filter((row)=>`${row.confirmationCode} ${row.guestName} ${row.unitName}`.toLowerCase().includes(search.toLowerCase()));
+  useEffect(()=>{ if(!toast) return; const timer=window.setTimeout(()=>setToast(''),7000); return ()=>window.clearTimeout(timer); },[toast]);
+  const needle=search.toLowerCase();
+  const rows=snapshot.bookings
+    .filter(row=>row.status!=='blocked')
+    .filter(row=>`${row.confirmationCode} ${row.guestName} ${row.unitName}`.toLowerCase().includes(needle))
+    .filter(row=>!statusFilter || managementStatus(row)===statusFilter)
+    .filter(row=>!recentOnly || row.confirmationCode===just || now-row.createdAt<=RECENT_WINDOW_MS)
+    .sort((a,b)=>{
+      // The booking staff just created always sits on the first line, whatever the sort.
+      if((a.confirmationCode===just)!==(b.confirmationCode===just)) return a.confirmationCode===just ? -1 : 1;
+      return sort==='checkin' ? a.checkIn.localeCompare(b.checkIn) : b.createdAt-a.createdAt;
+    });
+  const detail=detailCode ? snapshot.bookings.find(row=>row.confirmationCode===detailCode) : undefined;
   async function transition(row:BookingRow,status:'confirmed'|'checked_in'|'checked_out'|'cancelled'){try{await update({propertyId,bookingId:row.bookingId,status});}catch(error){window.alert(extractErrorMessage(error));}}
+  function actionsFor(row:BookingRow){return <div className="flex flex-wrap gap-2">{row.status==='pending'?<button type="button" className="text-xs font-bold text-emerald-700" onClick={()=>void transition(row,'confirmed')}>Xác nhận</button>:null}{row.status==='confirmed'?<button type="button" className="text-xs font-bold text-blue-700" onClick={()=>void transition(row,'checked_in')}>Check-in</button>:null}{row.status==='checked_in'?<button type="button" className="text-xs font-bold text-violet-700" onClick={()=>void transition(row,'checked_out')}>Hoàn thành</button>:null}{['pending','confirmed'].includes(row.status)?<button type="button" className="text-xs font-bold text-red-700" onClick={()=>void transition(row,'cancelled')}>Hủy</button>:null}</div>;}
+  const chip=(active:boolean)=>`rounded-full border px-3 py-1.5 text-xs font-bold transition ${active?'border-[#1565a8] bg-[#1565a8] text-white':'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`;
   return <div className="space-y-6">
-    {creating && <CreateBookingDialog propertyId={propertyId} close={()=>setParam('new','')}/>}
+    {creating && <CreateBookingDialog propertyId={propertyId} close={()=>setParam('new','')} onCreated={(code)=>{setParams(prev=>{const next=new URLSearchParams(prev); next.delete('new'); next.delete('status'); next.delete('q'); next.delete('recent'); next.set('just',code); return next;},{replace:true}); setToast(`Đã tạo booking ${code}. Lịch phòng đã được khóa và đơn nằm ở dòng đầu tiên.`);}}/>}
+    {detail && <BookingDetailDialog row={detail} currency={snapshot.property.currency} timezone={property.timezone} actions={actionsFor(detail)} close={()=>setParam('booking','')}/>}
     <section className="rounded-2xl border border-sky-100 bg-white shadow-sm">
       <div className="grid items-center gap-3 p-4 md:grid-cols-[1fr_minmax(0,28rem)_1fr]"><h2 className="font-extrabold text-[#10234a]">Danh sách booking</h2>
         <input type="search" aria-label="Tìm booking" className="field-input w-full" placeholder="Tìm mã, khách hoặc cơ sở…" value={search} onChange={(e)=>setParam('q',e.target.value)}/>
         <div className="md:justify-self-start"><button type="button" className="btn-primary whitespace-nowrap" onClick={()=>setParam('new','1')}>+ Tạo và khóa booking</button></div></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[70rem] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã</th><th className="p-3">Khách</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Lưu trú</th><th className="p-3">Nguồn</th><th className="p-3">Tổng tiền</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-slate-100"><td className="p-3 font-bold">{row.confirmationCode}</td><td className="p-3"><strong>{row.guestName}</strong><br/><span className="text-xs text-slate-500">{row.guestPhone}</span></td><td className="p-3">{row.unitName}</td><td className="p-3">{row.checkIn}<br/>→ {row.checkOut}</td><td className="p-3">{row.source}</td><td className="p-3 font-semibold">{formatMoney(row.totalCents,snapshot.property.currency)}</td><td className="p-3"><StatusPill status={row.status}/>{row.residenceMissing?<span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Thiếu khai báo {row.residenceMissing}</span>:null}</td><td className="p-3"><div className="flex gap-2">{row.status==='pending'?<button className="text-xs font-bold text-emerald-700" onClick={()=>void transition(row,'confirmed')}>Xác nhận</button>:null}{row.status==='confirmed'?<button className="text-xs font-bold text-blue-700" onClick={()=>void transition(row,'checked_in')}>Check-in</button>:null}{row.status==='checked_in'?<button className="text-xs font-bold text-violet-700" onClick={()=>void transition(row,'checked_out')}>Hoàn thành</button>:null}{['pending','confirmed'].includes(row.status)?<button className="text-xs font-bold text-red-700" onClick={()=>void transition(row,'cancelled')}>Hủy</button>:null}</div></td></tr>)}{!rows.length?<tr><td colSpan={8} className="p-8 text-center text-slate-400">Không có booking phù hợp.</td></tr>:null}</tbody></table></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+        <div role="group" aria-label="Lọc theo trạng thái" className="flex flex-wrap gap-2">
+          <button type="button" aria-pressed={!statusFilter} className={chip(!statusFilter)} onClick={()=>setParam('status','')}>Tất cả</button>
+          {MANAGEMENT_STATUSES.map(value=><button type="button" key={value} aria-pressed={statusFilter===value} className={chip(statusFilter===value)} onClick={()=>setParam('status',statusFilter===value?'':value)}>{STATUS_LABELS[value]}</button>)}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" aria-pressed={recentOnly} className={`${chip(recentOnly)} inline-flex items-center gap-1.5`} onClick={()=>setParam('recent',recentOnly?'':'1')}><Clock3 className="h-3.5 w-3.5" aria-hidden="true"/>Mới nhất</button>
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">Sắp xếp<select aria-label="Sắp xếp booking" className="field-input w-auto" value={sort} onChange={(e)=>setParam('sort',e.target.value==='newest'?'':e.target.value)}>{(Object.keys(BOOKING_SORTS) as BookingSort[]).map(key=><option key={key} value={key}>{BOOKING_SORTS[key]}</option>)}</select></label>
+        </div>
+      </div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[70rem] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã</th><th className="p-3">Khách</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Lưu trú</th><th className="p-3">Nguồn</th><th className="p-3">Tổng tiền</th><th className="p-3">Trạng thái</th><th className="p-3">Thao tác</th></tr></thead><tbody>{rows.map((row)=>{
+        const fresh=row.confirmationCode===just;
+        return <tr key={row.bookingId} aria-current={fresh?'true':undefined} className={`border-t border-slate-100 ${fresh?'bg-sky-50 shadow-[inset_4px_0_0_#1565a8]':''}`}>
+          <td className="p-3 font-bold">{row.confirmationCode}{fresh?<span className="ml-2 rounded-full bg-[#1565a8] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">Vừa tạo</span>:null}</td>
+          <td className="p-3"><strong>{row.guestName}</strong><br/><span className="text-xs text-slate-500">{row.guestPhone}</span></td><td className="p-3">{row.unitName}</td><td className="p-3">{row.checkIn}<br/>→ {row.checkOut}</td><td className="p-3">{row.source}</td><td className="p-3 font-semibold">{formatMoney(row.totalCents,snapshot.property.currency)}</td>
+          <td className="p-3"><StatusPill status={managementStatus(row)}/>{fresh?<span className="mt-1 block w-fit rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-[#1565a8]">Mới tạo · Đã khóa</span>:null}{row.residenceMissing?<span className="mt-1 block w-fit rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">Thiếu khai báo {row.residenceMissing}</span>:null}</td>
+          <td className="p-3"><div className="flex items-center gap-3"><button type="button" aria-label={`Xem chi tiết booking ${row.confirmationCode}`} title="Xem chi tiết" className="grid h-8 w-8 place-items-center rounded-full text-[#1565a8] hover:bg-sky-50" onClick={()=>setParam('booking',row.confirmationCode)}><Eye className="h-4 w-4" aria-hidden="true"/></button>{actionsFor(row)}</div></td></tr>;
+      })}{!rows.length?<tr><td colSpan={8} className="p-8 text-center text-slate-400">Không có booking phù hợp.</td></tr>:null}</tbody></table></div>
     </section>
+    {toast && <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-6 z-50 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl bg-[#0b2e4f] px-5 py-3 text-sm font-semibold text-white shadow-2xl"><span>{toast}</span><button type="button" aria-label="Đóng thông báo" className="text-white/70 hover:text-white" onClick={()=>setToast('')}><X className="h-4 w-4"/></button></div>}
   </div>;
 }
 
-function CreateBookingDialog({propertyId,close}:{propertyId:Id<'properties'>;close:()=>void}) {
+function BookingDetailDialog({row,currency,timezone,actions,close}:{row:BookingRow;currency:string;timezone:string;actions:React.ReactNode;close:()=>void}) {
+  const dialog=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{dialog.current?.showModal();},[]);
+  const nights=daysBetween(row.checkIn,row.checkOut);
+  const created=new Intl.DateTimeFormat('vi-VN',{timeZone:timezone,dateStyle:'short',timeStyle:'short'}).format(row.createdAt);
+  const guests=`${row.adults} người lớn${row.children?`, ${row.children} trẻ em`:''}${row.infants?`, ${row.infants} em bé`:''}${row.pets?`, ${row.pets} thú cưng`:''}`;
+  const items:Array<[string,React.ReactNode]>=[['Khách',<strong key="g">{row.guestName}</strong>],['Điện thoại',row.guestPhone||'-'],['Email',row.guestEmail||'-'],['Chỗ nghỉ',row.unitName],['Lưu trú',`${row.checkIn} → ${row.checkOut} (${nights} đêm)`],['Số khách',guests],['Nguồn',row.source==='online'?'Website':channelOf(row)],['Dịch vụ kèm',formatMoney(row.serviceCents,currency)],['Tổng tiền',<strong key="t">{formatMoney(row.totalCents,currency)}</strong>],['Tạo lúc',created]];
+  return <dialog ref={dialog} onCancel={close} onClick={e=>{if(e.target===dialog.current)close();}} aria-labelledby="booking-detail-heading" className="w-[min(96vw,34rem)] rounded-2xl p-0 shadow-xl backdrop:bg-black/40">
+    <div className="flex items-center justify-between border-b px-5 py-4"><div><h2 id="booking-detail-heading" className="text-lg font-extrabold text-[#10234a]">Booking {row.confirmationCode}</h2><div className="mt-1"><StatusPill status={managementStatus(row)}/></div></div><button type="button" className="btn-secondary" onClick={close}>Đóng</button></div>
+    <dl className="space-y-2 p-5 text-sm">{items.map(([label,value])=><div key={label} className="grid grid-cols-[8rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="text-slate-800">{value}</dd></div>)}</dl>
+    {row.residenceMissing?<p className="mx-5 mb-4 rounded-xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">Còn {row.residenceMissing} khách chưa khai báo tạm trú.</p>:null}
+    <div className="flex items-center justify-between gap-3 border-t px-5 py-4">{actions}<Link className="text-sm font-bold text-blue-700" to={`/admin/calendar?date=${row.checkIn}&period=week`}>Xem trên lịch ↗</Link></div>
+  </dialog>;
+}
+
+function CreateBookingDialog({propertyId,close,onCreated}:{propertyId:Id<'properties'>;close:()=>void;onCreated:(confirmationCode:string)=>void}) {
   const dialog=useRef<HTMLDialogElement>(null);
   useEffect(()=>{dialog.current?.showModal();},[]);
   return <dialog ref={dialog} onCancel={close} aria-labelledby="create-booking-heading" className="w-[min(96vw,56rem)] rounded-2xl p-0 shadow-xl backdrop:bg-black/40">
     <div className="flex items-center justify-between border-b px-5 py-4"><h2 id="create-booking-heading" className="text-lg font-extrabold text-[#10234a]">Tạo và khóa booking</h2><button type="button" className="btn-secondary" onClick={close}>Đóng</button></div>
-    <div className="max-h-[80vh] overflow-y-auto p-5"><SongHomestayManagementSection propertyId={propertyId} initialTab="booking" showTabs={false}/></div>
+    <div className="max-h-[80vh] overflow-y-auto p-5"><SongHomestayManagementSection propertyId={propertyId} initialTab="booking" showTabs={false} onBookingCreated={onCreated}/></div>
   </dialog>;
 }
 
 // Ten clearly distinct hues so every Sóng unit (8 today) keeps its own colour.
 const unitColors = ['#1d4ed8','#7e22ce','#047857','#b45309','#be185d','#0e7490','#dc2626','#65a30d','#4338ca','#a16207'];
-const statusColors: Record<string,string> = {hold:'#475569',pending:'#c2410c',confirmed:'#1d4ed8',checked_in:'#047857',checked_out:'#6d28d9',external:'#0e7490',blocked:'#991b1b'};
-/** Statuses offered on the calendar legend/filter. OTA/iCal blocks are shown as ordinary stays labelled with their channel. */
-const CALENDAR_STATUSES = ['hold','pending','confirmed','checked_in','checked_out','blocked'];
-const OPEN_STATUSES = new Set(['hold','pending','confirmed','checked_in','external']);
-/** A stay whose checkout has passed is history: it reads as completed, whatever workflow step it was left in. */
-function calendarStatus(row: { status: string; checkOut: string }, today: string) {
-  if (OPEN_STATUSES.has(row.status) && row.checkOut <= today) return 'checked_out';
-  return row.status === 'external' ? 'confirmed' : row.status;
-}
-const channelOf = (row: { source: string }) => row.source.replace(/^(ical|manual|channel):/, '');
+const statusColors: Record<CalendarStatus,string> = {pending:'#c2410c',confirmed:'#1d4ed8',completed:'#6d28d9',cancelled:'#991b1b',blocked:'#475569'};
 const barLabel = (row: BookingRow) => row.status === 'external' ? channelOf(row) : row.guestName;
 
 type Popover = { booking: BookingRow; x: number; y: number };
 
-function Calendar({snapshot,startDate,endDate,compact=false}:{snapshot:Snapshot;startDate:string;endDate:string;compact?:boolean}) {
+function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:string;endDate:string}) {
   const [params,setParams]=useSearchParams();
   const rawStatus=params.get('status') ?? '';
-  const status=!compact && CALENDAR_STATUSES.includes(rawStatus) ? rawStatus : '';
+  const status=(CALENDAR_STATUS_FILTERS as string[]).includes(rawStatus) ? rawStatus : '';
   const [popover,setPopover]=useState<Popover|null>(null);
   const popoverRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{
@@ -625,11 +670,12 @@ function Calendar({snapshot,startDate,endDate,compact=false}:{snapshot:Snapshot;
     window.addEventListener('keydown',onKey); window.addEventListener('mousedown',onDown);
     return ()=>{window.removeEventListener('keydown',onKey); window.removeEventListener('mousedown',onDown);};
   },[popover]);
-  const days=Array.from({length:Math.max(1,Math.min(compact?14:31,daysBetween(startDate,endDate)))},(_,i)=>addDays(startDate,i));
+  const days=Array.from({length:Math.max(1,Math.min(31,daysBetween(startDate,endDate)))},(_,i)=>addDays(startDate,i));
   const windowEnd=addDays(days[days.length-1],1);
-  const today=todayIso();
+  const {property}=useAdminProperty();
+  const today=todayIso(property.timezone);
   const rows=snapshot.bookings.filter(row=>row.status!=='cancelled' && (!status || calendarStatus(row,today)===status) && row.checkIn<windowEnd && row.checkOut>days[0]);
-  const colorFor=(row:BookingRow,unitIndex:number)=>compact?unitColors[unitIndex%unitColors.length]:(statusColors[calendarStatus(row,today)]??'#475569');
+  const colorFor=(row:BookingRow)=>statusColors[calendarStatus(row,today)];
   const columns=`repeat(${days.length}, minmax(${days.length<=7?'7rem':'3.5rem'}, 1fr))`;
   function open(event:ReactMouseEvent,booking:BookingRow){
     const width=288; const x=Math.min(event.clientX, window.innerWidth-width-16); const y=Math.min(event.clientY+12, window.innerHeight-260);
@@ -637,12 +683,9 @@ function Calendar({snapshot,startDate,endDate,compact=false}:{snapshot:Snapshot;
   }
   return <section className="card overflow-hidden p-4">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold">Lịch phòng tổng quan</h2>
-    {compact ? <Link to="/admin/calendar" className="text-blue-700">Xem toàn bộ <ArrowUpRight className="inline h-4 w-4"/></Link> :
-      <select aria-label="Trạng thái booking" className="field-input w-auto" value={status} onChange={e=>setParams(prev=>{const next=new URLSearchParams(prev); if(e.target.value) next.set('status',e.target.value); else next.delete('status'); return next;},{replace:true})}>
-      <option value="">Mọi trạng thái</option>{CALENDAR_STATUSES.map(s=><option value={s} key={s}>{STATUS_LABELS[s]}</option>)}</select>}</div>
-    <div className="mb-3 flex flex-wrap gap-3 text-xs font-semibold">{compact
-      ? snapshot.units.map((unit,i)=><span key={unit._id} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{background:unitColors[i%unitColors.length]}}/>{unit.name}</span>)
-      : CALENDAR_STATUSES.map(s=>[s,statusColors[s]] as const).map(([s,color])=><button type="button" key={s} onClick={()=>setParams(prev=>{const next=new URLSearchParams(prev); if(status===s) next.delete('status'); else next.set('status',s); return next;},{replace:true})} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${status===s?'ring-2 ring-offset-1':''}`} style={{color}}><span className="h-2.5 w-2.5 rounded-sm" style={{background:color}}/>{STATUS_LABELS[s]}</button>)}</div>
+    <select aria-label="Trạng thái booking" className="field-input w-auto" value={status} onChange={e=>setParams(prev=>{const next=new URLSearchParams(prev); if(e.target.value) next.set('status',e.target.value); else next.delete('status'); return next;},{replace:true})}>
+      <option value="">Mọi trạng thái</option>{CALENDAR_STATUS_FILTERS.map(s=><option value={s} key={s}>{STATUS_LABELS[s]}</option>)}</select></div>
+    <div className="mb-3 flex flex-wrap gap-3 text-xs font-semibold">{CALENDAR_STATUS_FILTERS.map(s=>[s,statusColors[s]] as const).map(([s,color])=><button type="button" key={s} onClick={()=>setParams(prev=>{const next=new URLSearchParams(prev); if(status===s) next.delete('status'); else next.set('status',s); return next;},{replace:true})} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${status===s?'ring-2 ring-offset-1':''}`} style={{color}}><span className="h-2.5 w-2.5 rounded-sm" style={{background:color}}/>{STATUS_LABELS[s]}</button>)}</div>
     <div className="overflow-x-auto"><div className="min-w-fit text-xs">
       <div className="flex border-b"><div className="w-36 shrink-0 p-2 font-bold">Căn lưu trú</div><div className="grid flex-1" style={{gridTemplateColumns:columns}}>{days.map(day=><div key={day} className={`border-l p-2 text-center font-semibold ${day===today?'bg-blue-50 text-blue-700':''}`}>{day.slice(8)}/{day.slice(5,7)}</div>)}</div></div>
       {snapshot.units.map((unit,i)=>{
@@ -656,7 +699,7 @@ function Calendar({snapshot,startDate,endDate,compact=false}:{snapshot:Snapshot;
             {days.map((day,d)=><div key={day} className={`border-l ${day===today?'bg-blue-50/60':''}`} style={{gridColumn:`${d+1}`,gridRow:`1 / span ${lanes}`}}/>)}
             {placed.map(({row,start,end,lane})=><button type="button" key={row.bookingId} onClick={e=>open(e,row)} title={`${barLabel(row)} · ${STATUS_LABELS[calendarStatus(row,today)]}`}
               className={`z-10 mx-0.5 my-0.5 truncate px-2 text-left font-semibold text-white shadow-sm hover:brightness-110 ${row.checkIn<days[0]?'':'rounded-l'} ${row.checkOut>windowEnd?'':'rounded-r'} ${row.syncConflict?'ring-2 ring-red-500':''}`}
-              style={{gridColumn:`${start+1} / ${Math.max(start+1,end)+1}`,gridRow:`${lane+1}`,background:colorFor(row,i)}}>{barLabel(row)}</button>)}
+              style={{gridColumn:`${start+1} / ${Math.max(start+1,end)+1}`,gridRow:`${lane+1}`,background:colorFor(row)}}>{barLabel(row)}</button>)}
           </div></div>;
       })}
     </div></div>

@@ -170,6 +170,28 @@ export const finishService = mutation({
   },
 });
 
+/** Add-on services guests arriving on `date` have booked, so the front desk can prepare them before check-in. */
+export const shiftServices = query({
+  args: { propertyId: v.id('properties'), date: v.string() },
+  handler: async (ctx, args) => {
+    await requireRead(ctx, args.propertyId);
+    if (!isIsoDate(args.date)) throw new ConvexError('INVALID_DATE_RANGE');
+    const arrivals = await ctx.db
+      .query('bookings')
+      .withIndex('by_property_checkIn', (q) => q.eq('propertyId', args.propertyId).eq('checkIn', args.date))
+      .collect();
+    const rows = [];
+    for (const booking of arrivals) {
+      if (['cancelled', 'expired', 'blocked'].includes(booking.status)) continue;
+      const lines = await ctx.db.query('bookingAddOns').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).collect();
+      for (const line of lines) {
+        rows.push({ lineId: line._id, code: booking.confirmationCode, name: line.nameSnapshot, quantity: line.quantity, completed: Boolean(line.completedAt) });
+      }
+    }
+    return rows;
+  },
+});
+
 export const kpiSummary = query({
   args: { propertyId: v.id('properties'), since: v.string() },
   handler: async (ctx, args) => {

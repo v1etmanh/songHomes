@@ -29,6 +29,7 @@ import { NavLink, Navigate, Outlet, useOutletContext } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { Spinner } from './Spinner';
+import { SongNotificationBell } from './song/SongNotificationBell';
 import { useStaffGate } from '../lib/useStaff';
 
 interface AssignedProperty {
@@ -254,6 +255,7 @@ export function AdminShell() {
               </div>
             </details>
           ) : null}
+          {property.slug === 'song-homestay' ? <SongNotificationBell propertyId={property.propertyId} timezone={property.timezone} /> : null}
           <details className="relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50">
               <span className="max-w-36 truncate">{gate.name}</span>
