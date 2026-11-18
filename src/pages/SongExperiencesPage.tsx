@@ -285,13 +285,12 @@ export function SongExperiencesPage() {
               footer="Giao xe tận cửa homestay"
               onChoose={() => setModal('bike')}
               media={
-                <div className="flex h-full bg-gradient-to-br from-[#0b2e4f] via-[#1565a8] to-[#4a9ee0]">
-                  <div className="flex min-w-0 flex-1 flex-col justify-end p-6 text-white">
-                    <Bike className="h-10 w-10 text-white/90" strokeWidth={1.5} aria-hidden="true" />
-                    <p className="mt-3 font-accent text-2xl leading-tight">Tự do vi vu Đà Nẵng</p>
-                    <p className="mt-1 text-sm text-white/75">Sơn Trà · Biển Mỹ Khê · Phố ẩm thực</p>
+                <div className="relative h-full">
+                  <img src="/song-homestay/experiences/motorbike.svg" alt="Xe tay ga chạy dọc đường biển Mỹ Khê, phía xa là bán đảo Sơn Trà" className="h-full w-full object-cover" loading="lazy" />
+                  <div className="absolute left-0 top-0 p-6 text-white">
+                    <p className="font-accent text-2xl leading-tight drop-shadow">Tự do vi vu Đà Nẵng</p>
+                    <p className="mt-1 text-sm text-white/80">Sơn Trà · Biển Mỹ Khê · Phố ẩm thực</p>
                   </div>
-                  <img src="/song-homestay/experiences/motorbike.webp" alt="Nhóm bạn trẻ vui vẻ trên hai xe tay ga Honda trắng và xanh" className="h-full w-[46%] shrink-0 object-cover object-[50%_78%]" loading="lazy" />
                 </div>
               }
             >

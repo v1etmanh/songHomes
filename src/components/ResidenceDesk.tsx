@@ -194,13 +194,13 @@ export function ResidenceDesk({
     .filter((b) => !needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle))
     .map((b) => ({ ...b, due: urgencyLabel(b.start, b.end, today) }))
     .sort((a, b) => Number(b.due.urgent) - Number(a.due.urgent) || a.start.localeCompare(b.start));
-  const urgentCount = pendingBookings.filter((b) => b.due.urgent).length + declarations.filter((r) => r.status === 'declared' && urgencyLabel(r.bookingCheckIn, r.checkOutDate.slice(0, 10), today).urgent).length;
+  const urgentCount = pendingBookings.filter((b) => b.due.urgent).length + declarations.filter((r) => r.status === 'declared' && urgencyLabel(r.bookingCheckIn ?? r.checkInDate.slice(0, 10), r.checkOutDate.slice(0, 10), today).urgent).length;
   const recordRows = declarations
     .filter((row) => {
       const done = row.status !== 'declared';
       if (filter === 'done') return done;
       if (filter === 'pending') return !done;
-      if (filter === 'urgent') return !done && urgencyLabel(row.bookingCheckIn, row.checkOutDate.slice(0, 10), today).urgent;
+      if (filter === 'urgent') return !done && urgencyLabel(row.bookingCheckIn ?? row.checkInDate.slice(0, 10), row.checkOutDate.slice(0, 10), today).urgent;
       return true;
     });
   const bookingRows = filter === 'done' ? [] : filter === 'urgent' ? pendingBookings.filter((b) => b.due.urgent) : pendingBookings;
