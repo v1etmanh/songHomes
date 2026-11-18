@@ -49,8 +49,8 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
   const listingForUrl = (url: string) => simListings.find((l) => l.feedUrl === url);
   const totalFeeds = overview.reduce((sum, unit) => sum + unit.feeds.length, 0);
   const failing = overview.flatMap((u) => u.feeds).filter((f) => f.lastRun && !f.lastRun.ok).length;
-  // Units added after the simulator was first connected (e.g. the 8-property catalog) have no listing yet.
-  const unitsWithoutSim = sim.enabled ? overview.filter((unit) => !simListings.some((l) => l.unitId === unit.unitId)).length : 0;
+  // Units with no simulated feed attached (added after the first connect, or whose iCal links were cleared) need a reconnect.
+  const unitsWithoutSim = sim.enabled ? overview.filter((unit) => !unit.feeds.some((feed) => listingForUrl(feed.url))).length : 0;
   const nextCron = runs.lastCronAt ? runs.lastCronAt + SYNC_INTERVAL_MS : null;
 
   return (
@@ -83,7 +83,7 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
         </div>
         {sim.enabled && (!sim.connected || unitsWithoutSim > 0) ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <span>{sim.connected ? `Còn ${unitsWithoutSim} cơ sở chưa có link iCal giả lập. Kết nối lại sẽ tạo link Airbnb và Booking.com (mô phỏng) cho các cơ sở còn thiếu.` : 'Chưa kết nối nền tảng giả lập. Kết nối sẽ tạo link iCal Airbnb và Booking.com (mô phỏng) cho từng cơ sở.'}</span>
+            <span>{sim.connected ? `Còn ${unitsWithoutSim} cơ sở chưa gắn link iCal giả lập. Kết nối lại sẽ tạo và gắn link Airbnb và Booking.com (mô phỏng) cho các cơ sở còn thiếu.` : 'Chưa kết nối nền tảng giả lập. Kết nối sẽ tạo link iCal Airbnb và Booking.com (mô phỏng) cho từng cơ sở.'}</span>
             <button type="button" className="btn-primary" disabled={busy !== null} onClick={() => void run('connect', async () => {
               const r = await connect({});
               return `Đã kết nối ${r.listings} link iCal giả lập. Bấm "Đồng bộ tất cả ngay" để kéo dữ liệu về.`;
