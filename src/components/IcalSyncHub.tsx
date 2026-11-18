@@ -49,6 +49,8 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
   const listingForUrl = (url: string) => simListings.find((l) => l.feedUrl === url);
   const totalFeeds = overview.reduce((sum, unit) => sum + unit.feeds.length, 0);
   const failing = overview.flatMap((u) => u.feeds).filter((f) => f.lastRun && !f.lastRun.ok).length;
+  // Units added after the simulator was first connected (e.g. the 8-property catalog) have no listing yet.
+  const unitsWithoutSim = sim.enabled ? overview.filter((unit) => !simListings.some((l) => l.unitId === unit.unitId)).length : 0;
   const nextCron = runs.lastCronAt ? runs.lastCronAt + SYNC_INTERVAL_MS : null;
 
   return (
@@ -79,15 +81,16 @@ export function IcalSyncHub({ propertyId }: { propertyId: Id<'properties'> }) {
             </button>
           </div>
         </div>
-        {sim.enabled && !sim.connected ? (
+        {sim.enabled && (!sim.connected || unitsWithoutSim > 0) ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <span>Chưa kết nối nền tảng giả lập. Kết nối sẽ tạo link iCal Airbnb và Booking.com (mô phỏng) cho từng cơ sở.</span>
+            <span>{sim.connected ? `Còn ${unitsWithoutSim} cơ sở chưa có link iCal giả lập. Kết nối lại sẽ tạo link Airbnb và Booking.com (mô phỏng) cho các cơ sở còn thiếu.` : 'Chưa kết nối nền tảng giả lập. Kết nối sẽ tạo link iCal Airbnb và Booking.com (mô phỏng) cho từng cơ sở.'}</span>
             <button type="button" className="btn-primary" disabled={busy !== null} onClick={() => void run('connect', async () => {
               const r = await connect({});
               return `Đã kết nối ${r.listings} link iCal giả lập. Bấm "Đồng bộ tất cả ngay" để kéo dữ liệu về.`;
-            })}>Kết nối nền tảng giả lập</button>
+            })}>{sim.connected ? 'Kết nối lại nền tảng giả lập' : 'Kết nối nền tảng giả lập'}</button>
           </div>
         ) : null}
+        {totalFeeds === 0 && !sim.enabled ? <p className="mt-4 text-sm text-slate-500">Chưa có link iCal nào. Thêm link .ics cho từng chỗ nghỉ trong Quản lý chỗ nghỉ để bật đồng bộ.</p> : null}
         {message ? <p role="status" className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{message}</p> : null}
       </section>
 
