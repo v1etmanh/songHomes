@@ -73,7 +73,7 @@ export function GuestPicker({ value, onChange, maxOccupancy }: { value: Pick<Gue
       {open ? (
         <div className="absolute left-0 right-0 z-30 mt-2 rounded-2xl border border-slate-200 bg-white px-5 py-1 shadow-xl">
           <Stepper label="Người lớn" hint="Từ 13 tuổi trở lên" value={value.adults} min={1} max={value.adults + Math.max(0, maxOccupancy - seated)} onChange={(adults) => onChange({ ...value, adults })} />
-          <Stepper label="Trẻ em" hint="Độ tuổi 2 – 12" value={value.children} min={0} max={value.children + Math.max(0, maxOccupancy - seated)} onChange={(children) => onChange({ ...value, children })} />
+          <Stepper label="Trẻ em" hint="Độ tuổi 2-12" value={value.children} min={0} max={value.children + Math.max(0, maxOccupancy - seated)} onChange={(children) => onChange({ ...value, children })} />
           <Stepper label="Em bé" hint="Dưới 2 tuổi" value={value.infants} min={0} max={MAX_INFANTS} onChange={(infants) => onChange({ ...value, infants })} />
           <Stepper label="Thú cưng" hint="Vui lòng báo trước cho Sóng" value={value.pets} min={0} max={MAX_PETS} onChange={(pets) => onChange({ ...value, pets })} />
           <p className="py-3 text-xs leading-5 text-slate-500">Chỗ ở này cho phép tối đa {maxOccupancy} khách, không tính em bé. Mang theo thú cưng cần được Sóng xác nhận trước.</p>

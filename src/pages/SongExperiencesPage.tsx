@@ -36,14 +36,14 @@ const TRIPS = [
 ] as const;
 
 /** Tours are arranged over chat: dates, group size and pickup vary too much for a fixed price. */
-const TOURS: Array<{ name: string; tag: string; text: string; icon: LucideIcon; tone: string; image?: string }> = [
-  { name: 'Bà Nà Hills – Đường lên tiên cảnh', tag: '1 ngày • Đón tận nơi', icon: Mountain, tone: 'from-[#0b2e4f] to-[#1565a8]',
+const TOURS: Array<{ name: string; tag: string; text: string; icon: LucideIcon; tone: string; image: string; alt: string }> = [
+  { name: 'Bà Nà Hills - Đường lên tiên cảnh', tag: '1 ngày • Đón tận nơi', icon: Mountain, tone: 'from-[#0b2e4f] to-[#1565a8]', image: '/song-homestay/experiences/ba-na.webp', alt: 'Cầu Vàng với đôi bàn tay khổng lồ giữa núi rừng Bà Nà Hills lúc hoàng hôn',
     text: 'Trải nghiệm tuyến cáp treo kỷ lục thế giới, check-in Cầu Vàng biểu tượng, dạo bước Làng Pháp và vui chơi tại Fantasy Park. Hỗ trợ đặt vé lẻ hoặc combo xe đưa đón + buffet trưa.' },
-  { name: 'Đảo Cù Lao Chàm – Thiên đường biển xanh', tag: '07:30 – 15:00 • Cano cao tốc', icon: Sailboat, tone: 'from-[#087795] to-[#3bb3cf]',
+  { name: 'Đảo Cù Lao Chàm - Thiên đường biển xanh', tag: '07:30 - 15:00 • Cano cao tốc', icon: Sailboat, tone: 'from-[#087795] to-[#3bb3cf]', image: '/song-homestay/experiences/cu-lao-cham.webp', alt: 'Bãi biển nước trong xanh ngọc và cát trắng ở đảo Cù Lao Chàm',
     text: 'Đi cano cao tốc ra đảo, lặn ngắm san hô tự nhiên, tham quan giếng cổ Chăm, chùa Hải Tạng và thưởng thức hải sản tươi sống ngay tại làng chài.' },
-  { name: 'Bán đảo Sơn Trà – Viên ngọc quý giữa lòng Đà Nẵng', tag: 'Nửa ngày • Sáng hoặc chiều', icon: Landmark, tone: 'from-[#1565a8] to-[#4a9ee0]',
+  { name: 'Bán đảo Sơn Trà - Viên ngọc quý giữa lòng Đà Nẵng', tag: 'Nửa ngày • Sáng hoặc chiều', icon: Landmark, tone: 'from-[#1565a8] to-[#4a9ee0]', image: '/song-homestay/experiences/son-tra.webp', alt: 'Tượng Quan Âm chùa Linh Ứng Bãi Bụt nhìn từ trên cao, bán đảo Sơn Trà',
     text: 'Viếng chùa Linh Ứng Bãi Bụt, săn hoàng hôn tại đỉnh Bàn Cờ, khám phá cây đa ngàn năm và ngắm voọc chà vá chân nâu quý hiếm.' },
-  { name: 'Show Ký Ức Hội An & Phố cổ về đêm', tag: '15:30 – 21:30 • Buổi tối', icon: Sparkles, tone: 'from-[#082c4f] to-[#087795]',
+  { name: 'Show Ký Ức Hội An & Phố cổ về đêm', tag: '15:30 - 21:30 • Buổi tối', icon: Sparkles, tone: 'from-[#082c4f] to-[#087795]', image: '/song-homestay/experiences/hoi-an.webp', alt: 'Sân khấu thực cảnh Ký Ức Hội An rực rỡ ánh đèn trên mặt nước về đêm',
     text: 'Thả đèn hoa đăng trên sông Hoài, dạo phố cổ đèn lồng lung linh và thưởng thức màn trình diễn nghệ thuật thực cảnh ngoài trời quy mô lớn nhất Việt Nam.' },
 ];
 
@@ -106,7 +106,7 @@ function BikeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (selection:
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2"><span className={label}>Chọn dòng xe tay ga (đồng giá {vnd(BIKE_PRICE)} / ngày)</span>
           <select className="field-input" value={model} onChange={(e) => setModel(e.target.value)}>
-            {BIKE_MODELS.map((m) => <option key={m} value={m}>{m} (Xe tay ga — {vnd(BIKE_PRICE)} / ngày)</option>)}
+            {BIKE_MODELS.map((m) => <option key={m} value={m}>{m} (Xe tay ga - {vnd(BIKE_PRICE)} / ngày)</option>)}
           </select>
         </label>
         <label><span className={label}>Số lượng xe</span><input className="field-input" type="number" min={1} max={10} value={bikes} onChange={(e) => setBikes(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} /></label>
@@ -177,7 +177,7 @@ function RequestPanel({ selections, onRemove, onSent }: { selections: Selection[
     event.preventDefault();
     setState('working');
     setError('');
-    const lines = selections.map((s, i) => `${i + 1}. ${s.title}: ${s.detail} — tạm tính ${vnd(s.estimate)}`);
+    const lines = selections.map((s, i) => `${i + 1}. ${s.title}: ${s.detail} - tạm tính ${vnd(s.estimate)}`);
     try {
       await submitContact({
         propertySlug: 'song-homestay',
@@ -213,7 +213,7 @@ function RequestPanel({ selections, onRemove, onSent }: { selections: Selection[
         <label><span className="field-label">Họ và tên</span><input className="field-input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
         <label><span className="field-label">Số điện thoại</span><input className="field-input" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
         <label><span className="field-label">Email</span><input className="field-input" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-        <label><span className="field-label">Thời gian lưu trú (nếu có)</span><input className="field-input" placeholder="VD: 20/11 – 24/11" value={form.dates} onChange={(e) => setForm({ ...form, dates: e.target.value })} /></label>
+        <label><span className="field-label">Thời gian lưu trú (nếu có)</span><input className="field-input" placeholder="VD: 20/11 - 24/11" value={form.dates} onChange={(e) => setForm({ ...form, dates: e.target.value })} /></label>
         {error ? <p role="alert" className="text-sm text-red-700 sm:col-span-2">{error}</p> : null}
         <p className="text-xs text-slate-500 sm:col-span-2">Đây là yêu cầu, chưa phải thanh toán. Sóng xác nhận lịch và chi phí trước khi phục vụ.</p>
         <button className="btn-primary sm:col-span-2" disabled={state === 'working'}>{state === 'working' ? 'Đang gửi…' : 'Gửi yêu cầu cho Sóng'}</button>
@@ -222,11 +222,12 @@ function RequestPanel({ selections, onRemove, onSent }: { selections: Selection[
   );
 }
 
-function ServiceCard({ icon: Icon, badge, title, priceHint, price, children, footer, onChoose }: { icon: LucideIcon; badge: string; title: string; priceHint: string; price: ReactNode; children: ReactNode; footer: string; onChoose: () => void }) {
+function ServiceCard({ icon: Icon, image, imageAlt, badge, title, priceHint, price, children, footer, onChoose }: { icon: LucideIcon; image: string; imageAlt: string; badge: string; title: string; priceHint: string; price: ReactNode; children: ReactNode; footer: string; onChoose: () => void }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-[0_14px_40px_rgba(8,47,85,0.09)]">
-      <div className="relative grid h-48 place-items-center bg-gradient-to-br from-[#0b2e4f] via-[#1565a8] to-[#4a9ee0]">
+      <div className="relative grid h-48 place-items-center overflow-hidden bg-gradient-to-br from-[#0b2e4f] via-[#1565a8] to-[#4a9ee0]">
         <Icon className="h-20 w-20 text-white/90" strokeWidth={1.25} aria-hidden="true" />
+        <img src={image} alt={imageAlt} className="absolute inset-0 h-full w-full object-cover object-[50%_25%]" loading="lazy" />
         <span className="absolute left-4 top-4 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-[#0b2e4f] shadow-sm">{badge}</span>
       </div>
       <div className="flex flex-1 flex-col p-6">
@@ -267,7 +268,7 @@ export function SongExperiencesPage() {
   }
   function chat(message: string) {
     chatWithSong(message);
-    setToast('Đã sao chép lời nhắn — dán vào Zalo để Sóng tư vấn nhanh nhất.');
+    setToast('Đã sao chép lời nhắn - dán vào Zalo để Sóng tư vấn nhanh nhất.');
   }
 
   return (
@@ -276,8 +277,8 @@ export function SongExperiencesPage() {
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#1565a8]">Trải nghiệm tại Sóng</p>
-            <h1 className="mt-3 text-4xl font-bold leading-tight text-[#0b2e4f] sm:text-5xl">Đà Nẵng theo <span className="font-accent font-normal italic">nhịp sống của bạn</span></h1>
-            <p className="mt-5 text-lg leading-8 text-slate-600">Tắm biển buổi sớm, thư giãn trong sân vườn, tổ chức BBQ trên sân thượng và khám phá thành phố như một người địa phương.</p>
+            <h1 className="mt-3 text-4xl font-bold leading-tight text-[#0b2e4f] sm:text-5xl">Khám phá Đà Nẵng <span className="font-accent font-normal">theo cách của bạn</span></h1>
+            <p className="mt-5 text-lg leading-8 text-slate-600">Sẵn sàng phương tiện di chuyển tận cửa cùng loạt gợi ý tour và điểm đến hấp dẫn được thiết kế riêng cho kỳ nghỉ của bạn tại Sóng Homestay.</p>
           </div>
           <a href="#selected-services" className="btn-secondary"><ClipboardList className="h-4 w-4" /> Dịch vụ đã chọn <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#1565a8] px-1.5 text-xs text-white">{selections.length}</span></a>
         </header>
@@ -288,12 +289,12 @@ export function SongExperiencesPage() {
             <p className="text-sm text-slate-500">Chọn dịch vụ trực tiếp · Xác nhận nhanh cùng lễ tân Sóng</p>
           </div>
           <div className="mt-8 grid gap-6 md:grid-cols-2">
-            <ServiceCard icon={Bike} badge="Giao xe tận cửa homestay" title="Thuê xe máy" priceHint="Đồng giá xe tay ga" price={<p className="text-xl font-bold text-[#087795]">{vnd(BIKE_PRICE)} <span className="text-xs font-medium text-slate-500">/ ngày</span></p>} footer="Tiếp nhận yêu cầu · Xác nhận thủ công" onChoose={() => setModal('bike')}>
+            <ServiceCard icon={Bike} image="/song-homestay/experiences/motorbike.webp" imageAlt="Xe máy tay ga Honda màu trắng dành cho khách thuê tại Sóng Homestay" badge="Giao xe tận cửa homestay" title="Thuê xe máy" priceHint="Đồng giá xe tay ga" price={<p className="text-xl font-bold text-[#087795]">{vnd(BIKE_PRICE)} <span className="text-xs font-medium text-slate-500">/ ngày</span></p>} footer="Tiếp nhận yêu cầu · Xác nhận thủ công" onChoose={() => setModal('bike')}>
               <p>Xe tay ga giao tận nơi, kèm <strong>2 mũ bảo hiểm và áo mưa</strong>, giúp bạn tự do vi vu bán đảo Sơn Trà, biển Mỹ Khê và khám phá ẩm thực địa phương.</p>
               <p className="mt-4 flex items-center justify-between rounded-xl bg-[#eef4fa] px-4 py-3"><span><span className="block font-semibold text-[#0b2e4f]">Honda Vision • Air Blade • Lead 125</span><span className="text-xs text-slate-500">Tất cả dòng xe tay ga đều áp dụng chung một mức giá</span></span><span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#1565a8]">{vnd(BIKE_PRICE)}/ngày</span></p>
             </ServiceCard>
-            <ServiceCard icon={CarFront} badge="MIỄN PHÍ đón sân bay cho booking từ 3 đêm" title="Đưa đón sân bay" priceHint="Ưu đãi từ 3 đêm" price={<p className="text-xl font-bold text-[#087795]">0đ <span className="text-xs font-medium text-slate-500">chiều đón</span></p>} footer="Miễn phí chiều đón khi ở từ 3 đêm" onChoose={() => setModal('airport')}>
-              <p>Tài xế đón đúng giờ tại sảnh sân bay Đà Nẵng (cách Sóng chỉ ~10–15 phút di chuyển), đưa bạn về tận cửa homestay an toàn, không lo chờ đợi.</p>
+            <ServiceCard icon={CarFront} image="/song-homestay/experiences/airport.webp" imageAlt="Máy bay cất cánh phía trên hàng xe riêng đón khách ở sân bay" badge="MIỄN PHÍ đón sân bay cho booking từ 3 đêm" title="Đưa đón sân bay" priceHint="Ưu đãi từ 3 đêm" price={<p className="text-xl font-bold text-[#087795]">0đ <span className="text-xs font-medium text-slate-500">chiều đón</span></p>} footer="Miễn phí chiều đón khi ở từ 3 đêm" onChoose={() => setModal('airport')}>
+              <p>Tài xế đón đúng giờ tại sảnh sân bay Đà Nẵng (cách Sóng chỉ ~10-15 phút di chuyển), đưa bạn về tận cửa homestay an toàn, không lo chờ đợi.</p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {CARS.map((c) => <p key={c.id} className="rounded-xl bg-[#eef4fa] px-4 py-3"><span className="block font-semibold text-[#0b2e4f]">{c.label}</span><span className="text-sm font-bold text-[#1565a8]">{vnd(c.price)} / lượt</span></p>)}
               </div>
@@ -306,19 +307,19 @@ export function SongExperiencesPage() {
 
         <section aria-labelledby="tours-title">
           <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#1565a8]">Gợi ý hành trình bản địa</p>
-          <h2 id="tours-title" className="mt-3 text-3xl font-bold text-[#0b2e4f] sm:text-4xl">Gợi ý hành trình <span className="font-accent font-normal italic">khám phá địa phương</span></h2>
-          <p className="mt-3 max-w-2xl text-slate-600">Tour ghép hoặc tour riêng linh hoạt theo nhóm khách. Nhấn <strong>“Chat với Sóng”</strong> để được tư vấn khung giờ đẹp và báo giá ưu đãi nhất — hoàn toàn miễn phí.</p>
+          <h2 id="tours-title" className="mt-3 text-3xl font-bold text-[#0b2e4f] sm:text-4xl">Gợi ý hành trình <span className="font-accent font-normal">khám phá địa phương</span></h2>
+          <p className="mt-3 max-w-2xl text-slate-600">Tour ghép hoặc tour riêng linh hoạt theo nhóm khách. Nhấn <strong>“Chat với Sóng”</strong> để được tư vấn khung giờ đẹp và báo giá ưu đãi nhất - hoàn toàn miễn phí.</p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {TOURS.map((tour) => (
               <article key={tour.name} className="flex flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-[0_10px_30px_rgba(8,47,85,0.08)]">
                 <div className={`relative grid h-40 place-items-center bg-gradient-to-br ${tour.tone}`}>
-                  {tour.image ? <img src={tour.image} alt={tour.name} className="absolute inset-0 h-full w-full object-cover" loading="lazy" /> : <tour.icon className="h-14 w-14 text-white/90" strokeWidth={1.25} aria-hidden="true" />}
+                  {tour.image ? <img src={tour.image} alt={tour.alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" /> : <tour.icon className="h-14 w-14 text-white/90" strokeWidth={1.25} aria-hidden="true" />}
                   <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-[#0b2e4f]">{tour.tag}</span>
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <h3 className="font-bold leading-snug text-[#0b2e4f]">{tour.name}</h3>
                   <p className="mt-2 line-clamp-4 flex-1 text-sm leading-6 text-slate-600">{tour.text}</p>
-                  <button type="button" onClick={() => chat(`Chào Sóng, mình muốn tư vấn tour ${tour.name}...`)} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-[#1565a8]/20 bg-[#eef4fa] px-4 py-2.5 text-sm font-bold text-[#1565a8] transition hover:bg-[#1565a8] hover:text-white"><MessageCircle className="h-4 w-4" aria-hidden="true" /> Chat với Sóng</button>
+                  <button type="button" onClick={() => chat(`Chào Sóng, mình muốn tư vấn tour ${tour.name}...`)} className="mt-4 inline-flex items-center justify-center gap-2 rounded-full border border-[#087795]/40 bg-white px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:bg-[#087795] hover:text-white"><MessageCircle className="h-4 w-4" aria-hidden="true" /> Chat với Sóng</button>
                 </div>
               </article>
             ))}
@@ -327,7 +328,7 @@ export function SongExperiencesPage() {
 
         <section className="overflow-hidden rounded-[2rem] bg-gradient-to-r from-[#0b2e4f] to-[#1565a8] px-7 py-12 text-white shadow-xl sm:px-12">
           <Waves className="h-10 w-10 text-sky-200" aria-hidden="true" />
-          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">Feel at home — <span className="font-accent font-normal italic">Live like a local</span></h2>
+          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">Feel at home - <span className="font-accent font-normal">Live like a local</span></h2>
           <p className="mt-3 max-w-2xl text-white/80">Đặt phòng từ 3 đêm để được miễn phí đón sân bay, hoặc nhắn Sóng để thiết kế lịch trình riêng cho gia đình và nhóm bạn.</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/p/song-homestay/stays" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-[#0b2e4f] transition hover:-translate-y-0.5">Chọn chỗ nghỉ ngay</Link>

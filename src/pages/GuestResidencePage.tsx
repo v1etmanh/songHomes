@@ -158,7 +158,7 @@ function BookingDeclaration({ bookingId }: { bookingId: Id<'bookings'> }) {
         <div><dt className="text-slate-500">Chỗ nghỉ</dt><dd className="font-semibold text-slate-900">{data.unitName}</dd></div>
         <div><dt className="text-slate-500">Thời gian lưu trú</dt><dd className="font-semibold text-slate-900">{formatDisplayDate(data.checkIn)} → {formatDisplayDate(data.checkOut)}</dd></div>
         <div><dt className="text-slate-500">Trạng thái đơn</dt><dd className="font-semibold text-slate-900">{STATUS_LABELS[data.status] ?? data.status}</dd></div>
-        <div className="sm:col-span-3"><dt className="flex items-center gap-1 text-slate-500"><MapPin className="h-4 w-4" />Địa chỉ lưu trú</dt><dd className="font-semibold text-slate-900">{data.stayAddress || '—'}</dd></div>
+        <div className="sm:col-span-3"><dt className="flex items-center gap-1 text-slate-500"><MapPin className="h-4 w-4" />Địa chỉ lưu trú</dt><dd className="font-semibold text-slate-900">{data.stayAddress || '-'}</dd></div>
       </dl>
 
       {data.registrations.length ? (
@@ -167,7 +167,7 @@ function BookingDeclaration({ bookingId }: { bookingId: Id<'bookings'> }) {
             <li key={row._id} className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
               <div>
                 <p className="font-semibold text-slate-900">{index + 1}. {row.fullName}</p>
-                <p className="text-slate-500">{DOCUMENT_LABELS[row.documentType]}: <span className="font-mono">{row.documentNumber}</span> · Lý do: {row.reason || '—'}</p>
+                <p className="text-slate-500">{DOCUMENT_LABELS[row.documentType]}: <span className="font-mono">{row.documentNumber}</span> · Lý do: {row.reason || '-'}</p>
                 <p className="text-slate-500">{formatDisplayDate(row.checkInDate)} → {formatDisplayDate(row.checkOutDate)}</p>
               </div>
               {row.status === 'declared' ? (

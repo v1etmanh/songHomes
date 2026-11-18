@@ -38,7 +38,7 @@ export function SongStaysPage() {
       <div className="mx-auto max-w-6xl">
         <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#1598ad]">Chỗ nghỉ tại Đà Nẵng</p>
         <h1 className="mt-2 text-4xl font-extrabold tracking-tight">Tìm không gian phù hợp với bạn</h1>
-        <p className="mt-3 max-w-2xl text-slate-600">Tám chỗ nghỉ riêng biệt — căn hộ view biển Mỹ Khê, nhà có vườn, villa hồ bơi, rooftop BBQ và nhà nguyên căn cho thuê dài hạn.</p>
+        <p className="mt-3 max-w-2xl text-slate-600">Tám chỗ nghỉ riêng biệt - căn hộ view biển Mỹ Khê, nhà có vườn, villa hồ bơi, rooftop BBQ và nhà nguyên căn cho thuê dài hạn.</p>
         <form onSubmit={submit} className="mt-8 grid gap-3 rounded-3xl bg-white p-5 shadow-lg md:grid-cols-5">
           <label><span className="field-label">Nhận phòng</span><input className="field-input" type="date" min={todayIso()} required value={form.checkIn} onChange={(e) => setForm({ ...form, checkIn: e.target.value })} /></label>
           <label><span className="field-label">Trả phòng</span><input className="field-input" type="date" min={form.checkIn || todayIso()} required value={form.checkOut} onChange={(e) => setForm({ ...form, checkOut: e.target.value })} /></label>

@@ -46,13 +46,13 @@ const AMENITIES = [
   { title: 'Hồ bơi', text: 'Làn nước mát giữa khu vườn nhiệt đới, dành cho những buổi chiều thật chậm.', icon: Waves, src: '/song-homestay/townhouse.webp', crop: { position: '50% 55%', scale: 2.2 } },
   { title: 'Quầy bar', text: 'Một ly nước mát, vài câu chuyện cùng bạn đồng hành khi hoàng hôn buông.', icon: Martini, src: '/song-homestay/townhouse.webp', crop: { position: '88% 68%', scale: 2.4 } },
   { title: 'Khu bếp', text: 'Bếp đầy đủ dụng cụ để bạn tự tay nấu bữa sáng hay một bữa tối hải sản.', icon: ChefHat, src: '/song-homestay/townhouse.webp', crop: { position: '100% 45%', scale: 2.6 } },
-  { title: 'Không gian sinh hoạt chung', text: 'Phòng khách rộng, ánh sáng tự nhiên — nơi cả nhóm quây quần mỗi tối.', icon: Sofa, src: '/song-homestay/apartment.webp' },
+  { title: 'Không gian sinh hoạt chung', text: 'Phòng khách rộng, ánh sáng tự nhiên - nơi cả nhóm quây quần mỗi tối.', icon: Sofa, src: '/song-homestay/apartment.webp' },
 ] as const;
 
 const SERVICES = [
-  { title: 'Thuê xe máy', text: 'Xe tay ga giao tận nơi, kèm 2 mũ bảo hiểm và áo mưa — 150.000đ / ngày.', icon: Bike },
+  { title: 'Thuê xe máy', text: 'Xe tay ga giao tận nơi, kèm 2 mũ bảo hiểm và áo mưa - 150.000đ / ngày.', icon: Bike },
   { title: 'Đưa đón sân bay', text: 'Xe riêng đón tại sân bay Đà Nẵng. Miễn phí chiều đón cho booking từ 3 đêm.', icon: Plane },
-  { title: 'Tour Đà Nẵng – Hội An', text: 'Bà Nà Hills, Cù Lao Chàm, Sơn Trà, Ký Ức Hội An — lịch trình linh hoạt.', icon: MapIcon },
+  { title: 'Tour Đà Nẵng - Hội An', text: 'Bà Nà Hills, Cù Lao Chàm, Sơn Trà, Ký Ức Hội An - lịch trình linh hoạt.', icon: MapIcon },
   { title: 'Tư vấn lịch trình miễn phí', text: 'Chat với Sóng để được gợi ý khung giờ đẹp và báo giá ưu đãi nhất.', icon: MessageCircle },
 ];
 
@@ -83,12 +83,12 @@ function roomUrl(property: Property, unitType: UnitType) {
 }
 
 /** Section heading in the "Escape the *ordinary*" style: sans with an italic serif accent. */
-function Heading({ eyebrow, lead, accent, light = false, center = false }: { eyebrow: string; lead: string; accent: string; light?: boolean; center?: boolean }) {
+function Heading({ eyebrow, lead, accent, light = false, center = false, compact = false }: { eyebrow: string; lead: string; accent: string; light?: boolean; center?: boolean; compact?: boolean }) {
   return (
     <div className={center ? 'mx-auto max-w-3xl text-center' : 'max-w-3xl'}>
       <p className={`text-xs font-bold uppercase tracking-[0.28em] ${light ? 'text-sky-200' : 'text-[#1f74b8]'}`}>{eyebrow}</p>
-      <h2 className={`mt-3 font-sans text-4xl font-semibold leading-[1.05] tracking-[-0.03em] sm:text-5xl ${light ? 'text-white' : 'text-[#0b2e4f]'}`}>
-        {lead} <span className="font-accent font-normal italic tracking-normal">{accent}</span>
+      <h2 className={`mt-3 font-sans text-4xl font-semibold leading-[1.05] tracking-[-0.03em] ${compact ? '' : 'sm:text-5xl'} ${light ? 'text-white' : 'text-[#0b2e4f]'}`}>
+        {lead} <span className="font-accent font-normal tracking-normal">{accent}</span>
       </h2>
     </div>
   );
@@ -96,10 +96,10 @@ function Heading({ eyebrow, lead, accent, light = false, center = false }: { eye
 
 function DetailButton({ property, unitType, className = '' }: { property: Property; unitType: UnitType; className?: string }) {
   if (unitType.comingSoon) {
-    return <span className={`inline-flex cursor-not-allowed items-center rounded-full border border-slate-300 px-6 py-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400 ${className}`}>Sắp mở</span>;
+    return <span className={`inline-flex cursor-not-allowed items-center rounded-full border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-400 ${className}`}>Sắp mở</span>;
   }
   return (
-    <Link to={roomUrl(property, unitType)} className={`inline-flex items-center gap-2 rounded-full bg-[#0b2e4f] px-6 py-3 text-xs font-bold uppercase tracking-[0.18em] text-white transition hover:bg-[#1565a8] ${className}`}>
+    <Link to={roomUrl(property, unitType)} className={`btn-teal ${className}`}>
       Xem chi tiết <ArrowRight className="h-4 w-4" aria-hidden="true" />
     </Link>
   );
@@ -158,8 +158,8 @@ function RoomShowcase({ property }: { property: Property }) {
   return (
     <section id="rooms" className="scroll-mt-24 bg-[#eef4fa]">
       {/* Desktop scroll-driven stage */}
-      <div ref={track} className="relative hidden lg:block" style={{ height: `${100 + rooms.length * 55}vh` }}>
-        <div className="sticky top-0 flex h-screen items-center px-8 pb-6 pt-28">
+      <div ref={track} className="relative hidden stage:block" style={{ height: `${100 + rooms.length * 55}vh` }}>
+        <div className="sticky top-0 flex h-screen items-center px-8 pb-6 pt-24">
           <div className="mx-auto grid w-full max-w-6xl grid-cols-[1.15fr_.85fr] items-center gap-14">
             <div className="relative h-[min(64vh,34rem)] overflow-hidden rounded-[2rem] bg-sky-100 shadow-[0_30px_70px_rgba(8,47,85,0.18)]">
               {rooms.map((unitType, index) => (
@@ -176,15 +176,15 @@ function RoomShowcase({ property }: { property: Property }) {
               </span>
             </div>
             <div>
-              <Heading eyebrow="Chỗ nghỉ tại Sóng" lead="Your space," accent="your kind of stay." />
-              <ul className="mt-6 border-t border-[#0b2e4f]/15">
+              <Heading eyebrow="Chỗ nghỉ tại Sóng" lead="Your space," accent="your kind of stay." compact />
+              <ul className="mt-4 border-t border-[#0b2e4f]/15">
                 {rooms.map((unitType, index) => (
                   <li key={unitType.unitTypeId} className="border-b border-[#0b2e4f]/15">
                     <button
                       type="button"
                       onClick={() => jumpTo(index)}
                       aria-current={index === active}
-                      className={`flex w-full items-center justify-between gap-3 py-2.5 text-left font-accent text-xl transition ${index === active ? 'text-[#1565a8]' : 'text-[#0b2e4f]/55 hover:text-[#0b2e4f]'}`}
+                      className={`flex w-full items-center justify-between gap-3 py-1.5 text-left font-accent text-lg transition ${index === active ? 'text-[#1565a8]' : 'text-[#0b2e4f]/55 hover:text-[#0b2e4f]'}`}
                     >
                       <span>{unitType.name}</span>
                       <ArrowRight className={`h-4 w-4 shrink-0 transition ${index === active ? 'translate-x-0 opacity-100' : '-translate-x-2 opacity-0'}`} aria-hidden="true" />
@@ -192,10 +192,10 @@ function RoomShowcase({ property }: { property: Property }) {
                   </li>
                 ))}
               </ul>
-              <div key={current.unitTypeId} className="mt-5 animate-[songFade_.5s_ease-out]">
+              <div key={current.unitTypeId} className="mt-4 animate-[songFade_.5s_ease-out]">
                 <p className="line-clamp-3 text-[15px] leading-7 text-slate-600">{current.description}</p>
-                <div className="mt-4"><RoomFacts property={property} unitType={current} /></div>
-                <DetailButton property={property} unitType={current} className="mt-6" />
+                <div className="mt-3"><RoomFacts property={property} unitType={current} /></div>
+                <DetailButton property={property} unitType={current} className="mt-4" />
               </div>
             </div>
           </div>
@@ -203,7 +203,7 @@ function RoomShowcase({ property }: { property: Property }) {
       </div>
 
       {/* Mobile / tablet cards */}
-      <div className="px-5 py-20 sm:px-8 lg:hidden">
+      <div className="px-5 py-20 sm:px-8 stage:hidden">
         <Heading eyebrow="Chỗ nghỉ tại Sóng" lead="Your space," accent="your kind of stay." />
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
           {rooms.map((unitType, index) => (
@@ -413,7 +413,7 @@ export function SongLanding({ property }: { property: Property }) {
         <div className="mx-auto flex w-full max-w-6xl flex-1 items-center px-5 pb-10 pt-32 sm:px-8">
           <div className="max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-[0.32em] text-white/85 sm:text-sm">Đà Nẵng · Mỹ Khê</p>
-            <h1 className="mt-5 font-accent text-6xl font-normal italic leading-[1.02] text-white sm:text-7xl lg:text-8xl">Sóng Homestay</h1>
+            <h1 className="mt-5 font-accent text-6xl font-normal leading-[1.02] text-white sm:text-7xl lg:text-8xl">Sóng Homestay</h1>
             <p className="mt-4 font-sans text-2xl font-semibold tracking-[-0.02em] text-white/95 sm:text-3xl">Where the sea meets serenity</p>
             <p className="mt-7 max-w-2xl text-base font-medium leading-8 text-white/90 sm:text-lg">
               Một không gian lưu trú hiện đại, nơi bạn thức dậy cùng ánh nắng, lắng nghe tiếng sóng và tận hưởng nhịp sống dịu dàng của thành phố biển Đà Nẵng.
@@ -443,7 +443,7 @@ export function SongLanding({ property }: { property: Property }) {
             Số khách
             <input type="number" min={1} max={12} value={search.guests} onChange={(event) => setSearch((current) => ({ ...current, guests: Number(event.target.value) }))} className={fieldClass} />
           </label>
-          <button type="submit" className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1565a8] to-[#3b8fd6] px-8 font-bold text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:shadow-xl lg:mb-2 lg:mt-0 lg:w-auto">
+          <button type="submit" className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0b2e4f] px-8 font-bold text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:bg-[#1565a8] hover:shadow-xl lg:mb-2 lg:mt-0 lg:w-auto">
             <Search className="h-5 w-5" aria-hidden="true" /> Tìm phòng
           </button>
         </form>
@@ -458,7 +458,7 @@ export function SongLanding({ property }: { property: Property }) {
         <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[.9fr_1.1fr]">
           <div>
             <Heading eyebrow="Về Sóng Homestay" lead="Ở gần biển." accent="Sống chậm một chút." />
-            <p className="mt-6 text-base leading-8 text-slate-600">Từ chất liệu tự nhiên, gam xanh dịu mát đến cách đón tiếp chân thành, mỗi căn Sóng được tạo nên để bạn thật sự nghỉ ngơi — không chỉ là tìm một nơi để ngủ.</p>
+            <p className="mt-6 text-base leading-8 text-slate-600">Từ chất liệu tự nhiên, gam xanh dịu mát đến cách đón tiếp chân thành, mỗi căn Sóng được tạo nên để bạn thật sự nghỉ ngơi - không chỉ là tìm một nơi để ngủ.</p>
             <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">{property.unitTypes.filter((unitType) => !unitType.comingSoon).length}</strong><span className="mt-1 block text-xs text-slate-500">Chỗ nghỉ</span></div>
               <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><strong className="block text-2xl text-[#1565a8]">800+</strong><span className="mt-1 block text-xs text-slate-500">Đánh giá từ Airbnb, Booking.com</span></div>

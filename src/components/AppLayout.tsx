@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Facebook, Instagram, Mail, MapPin, Mountain, Phone, Waves } from 'lucide-react';
+import { Facebook, Instagram, Mail, MapPin, Mountain, Phone } from 'lucide-react';
 import { SONG_LINKS } from '../lib/songLinks';
 import { PUBLIC_SHOWCASE } from '../lib/publicShowcase';
 import { GuestAccountMenu } from './GuestAccountMenu';
+import { SongLogo } from './SongLogo';
 
 /** Shared chrome (header/footer) for every route, rendered via <Outlet />. */
 export function AppLayout() {
@@ -49,9 +50,7 @@ export function AppLayout() {
         <header className={`${isSongLanding ? 'fixed inset-x-0 top-0' : 'sticky top-0'} z-50 px-3 pt-3 sm:px-5 sm:pt-4`}>
           <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 rounded-full bg-white/90 pl-3 pr-2 shadow-[0_12px_40px_rgba(8,47,85,0.16)] ring-1 ring-[#0b2e4f]/5 backdrop-blur-md sm:pl-4">
             <Link to="/p/song-homestay" className="flex shrink-0 items-center gap-2.5 text-[#0b2e4f]">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-[#1565a8] to-[#4a9ee0] text-white shadow-md shadow-blue-900/20">
-                <Waves className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
-              </span>
+              <SongLogo className="h-10 w-10 shadow-md shadow-blue-900/20" />
               <span className="hidden font-sans text-base font-extrabold tracking-tight sm:inline sm:text-lg">Sóng Homestay</span>
             </Link>
             <nav aria-label="Điều hướng chính" className="hidden items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-slate-600 lg:flex">
@@ -59,7 +58,7 @@ export function AppLayout() {
                 <Link key={item.to} to={item.to} aria-current={item.active ? 'page' : undefined} className={`rounded-full px-3 py-2 transition hover:bg-[#e8f1fb] hover:text-[#1565a8] ${item.active ? 'bg-[#e3eefa] text-[#1565a8]' : ''}`}>{item.label}</Link>
               ))}
             </nav>
-            <div className="flex items-center gap-2 whitespace-nowrap"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#0b2e4f] px-4 py-2.5 text-sm font-bold text-white sm:px-5 transition hover:bg-[#1565a8]">Đặt phòng ngay</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#1565a8]/25 px-4 py-2.5 text-sm font-bold text-[#1565a8] transition hover:border-[#1565a8] hover:bg-[#1565a8] hover:text-white xl:inline">Quản trị</Link> : null}</div>
+            <div className="flex items-center gap-2 whitespace-nowrap"><GuestAccountMenu /><Link to="/p/song-homestay/booking" className="whitespace-nowrap rounded-full bg-[#0b2e4f] px-4 py-2.5 text-sm font-bold text-white sm:px-5 transition hover:bg-[#1565a8]">Đặt phòng ngay</Link>{PUBLIC_SHOWCASE.allowStaffRoutes ? <Link to="/admin" className="hidden rounded-full border border-[#087795]/40 bg-white px-4 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#087795] hover:bg-[#087795] hover:text-white xl:inline">Quản trị</Link> : null}</div>
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className={isSongPublic ? (isSongLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8') : 'mx-auto w-full max-w-5xl flex-1 px-4 py-8'}>
@@ -74,7 +73,7 @@ export function AppLayout() {
           <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[1.2fr_.8fr_.8fr]">
             <div>
               <Link to="/p/song-homestay" className="flex items-center gap-3 text-white">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-white/10"><Waves className="h-5 w-5" /></span>
+                <SongLogo className="h-10 w-10" />
                 <span className="font-sans text-xl font-extrabold">Sóng Homestay</span>
               </Link>
               <p className="mt-4 max-w-sm leading-7">Không gian nghỉ dưỡng gần biển Mỹ Khê, nơi bạn chạm vào nhịp sống dịu dàng của Đà Nẵng.</p>

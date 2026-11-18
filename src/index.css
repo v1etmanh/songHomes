@@ -58,7 +58,7 @@ h4 {
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-[#1565a8]/25 bg-white px-5 py-2.5 text-sm font-bold text-[#1565a8] transition hover:border-[#1565a8] hover:bg-[#e8f1fb] disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-[#087795]/40 bg-white px-5 py-2.5 text-sm font-bold text-[#087795] transition hover:border-[#087795] hover:bg-[#e6f4f7] disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .badge {
@@ -100,6 +100,9 @@ h4 {
 .btn-teal {
   @apply inline-flex items-center justify-center gap-2 rounded-full bg-[#087795] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#06647c] disabled:cursor-not-allowed disabled:opacity-50;
 }
+
+/* One rule for the secondary font: Playfair Display is always italic (never mixed upright/italic). */
+.font-accent { font-style: italic; }
 
 /* Hide scrollbars on horizontal carousels while keeping them scrollable. */
 .no-scrollbar { scrollbar-width: none; }

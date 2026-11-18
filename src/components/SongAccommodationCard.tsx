@@ -38,8 +38,8 @@ export function SongAccommodationCard({ stay, currency, query = '' }: { stay: St
         <h2 className="mt-2 font-sans text-xl font-extrabold leading-tight text-[#073b59]">{stay.name}</h2>
         <p className="mt-3 line-clamp-2 min-h-12 text-sm leading-6 text-slate-600">{stay.description}</p>
         <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">
-          <span className="flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-cyan-600" /> {stay.bedrooms ?? '—'} phòng ngủ</span>
-          <span className="flex items-center gap-1.5"><Bath className="h-4 w-4 text-cyan-600" /> {stay.bathrooms ?? '—'} phòng tắm</span>
+          <span className="flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-cyan-600" /> {stay.bedrooms ?? '-'} phòng ngủ</span>
+          <span className="flex items-center gap-1.5"><Bath className="h-4 w-4 text-cyan-600" /> {stay.bathrooms ?? '-'} phòng tắm</span>
           <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-cyan-600" /> {stay.maxOccupancy ? `Tối đa ${stay.maxOccupancy} khách` : 'Liên hệ sức chứa'}</span>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
