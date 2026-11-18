@@ -45,8 +45,8 @@ const ROOM_IMAGES = [
 const AMENITIES = [
   { title: 'Hồ bơi', text: 'Làn nước mát giữa khu vườn nhiệt đới, dành cho những buổi chiều thật chậm.', icon: Waves, src: '/song-homestay/townhouse.webp', crop: { position: '50% 55%', scale: 2.2 } },
   { title: 'Quầy bar', text: 'Một ly nước mát, vài câu chuyện cùng bạn đồng hành khi hoàng hôn buông.', icon: Martini, src: '/song-homestay/townhouse.webp', crop: { position: '88% 68%', scale: 2.4 } },
-  { title: 'Khu bếp', text: 'Bếp đầy đủ dụng cụ để bạn tự tay nấu bữa sáng hay một bữa tối hải sản.', icon: ChefHat, src: '/song-homestay/townhouse.webp', crop: { position: '100% 45%', scale: 2.6 } },
-  { title: 'Không gian sinh hoạt chung', text: 'Phòng khách rộng, ánh sáng tự nhiên - nơi cả nhóm quây quần mỗi tối.', icon: Sofa, src: '/song-homestay/apartment.webp' },
+  { title: 'Khu bếp', text: 'Bếp đầy đủ dụng cụ để bạn tự tay nấu bữa sáng hay một bữa tối hải sản.', icon: ChefHat, src: '/song-homestay/amenities/kitchen.webp' },
+  { title: 'Không gian sinh hoạt chung', text: 'Sân vườn xanh mát với bàn gỗ dài - nơi cả nhóm quây quần mỗi tối.', icon: Sofa, src: '/song-homestay/amenities/garden-lounge.webp' },
 ] as const;
 
 const SERVICES = [
@@ -123,6 +123,7 @@ function RoomFacts({ property, unitType }: { property: Property; unitType: UnitT
 function RoomShowcase({ property }: { property: Property }) {
   const rooms = property.unitTypes.filter((unitType) => !unitType.comingSoon);
   const track = useRef<HTMLDivElement>(null);
+  const rail = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
 
   useEffect(() => {
@@ -158,10 +159,10 @@ function RoomShowcase({ property }: { property: Property }) {
   return (
     <section id="rooms" className="scroll-mt-24 bg-[#eef4fa]">
       {/* Desktop scroll-driven stage */}
-      <div ref={track} className="relative hidden stage:block" style={{ height: `${100 + rooms.length * 55}vh` }}>
-        <div className="sticky top-0 flex h-screen items-center px-8 pb-6 pt-24">
+      <div ref={track} className="relative hidden stage:block" style={{ height: `${100 + rooms.length * 38}vh` }}>
+        <div className="sticky top-0 flex h-screen items-center px-8 pb-6 pt-24 [@media(max-height:820px)]:pt-20">
           <div className="mx-auto grid w-full max-w-6xl grid-cols-[1.15fr_.85fr] items-center gap-14">
-            <div className="relative h-[min(64vh,34rem)] overflow-hidden rounded-[2rem] bg-sky-100 shadow-[0_30px_70px_rgba(8,47,85,0.18)]">
+            <div className="relative h-[min(64vh,34rem)] overflow-hidden rounded-[2rem] [@media(max-height:820px)]:h-[min(70vh,30rem)] bg-sky-100 shadow-[0_30px_70px_rgba(8,47,85,0.18)]">
               {rooms.map((unitType, index) => (
                 <img
                   key={unitType.unitTypeId}
@@ -184,7 +185,7 @@ function RoomShowcase({ property }: { property: Property }) {
                       type="button"
                       onClick={() => jumpTo(index)}
                       aria-current={index === active}
-                      className={`flex w-full items-center justify-between gap-3 py-1.5 text-left font-accent text-lg transition ${index === active ? 'text-[#1565a8]' : 'text-[#0b2e4f]/55 hover:text-[#0b2e4f]'}`}
+                      className={`flex w-full items-center justify-between gap-3 py-1.5 text-left font-accent text-lg transition [@media(max-height:820px)]:py-1 [@media(max-height:820px)]:text-base ${index === active ? 'text-[#1565a8]' : 'text-[#0b2e4f]/55 hover:text-[#0b2e4f]'}`}
                     >
                       <span>{unitType.name}</span>
                       <ArrowRight className={`h-4 w-4 shrink-0 transition ${index === active ? 'translate-x-0 opacity-100' : '-translate-x-2 opacity-0'}`} aria-hidden="true" />
@@ -193,7 +194,7 @@ function RoomShowcase({ property }: { property: Property }) {
                 ))}
               </ul>
               <div key={current.unitTypeId} className="mt-4 animate-[songFade_.5s_ease-out]">
-                <p className="line-clamp-3 text-[15px] leading-7 text-slate-600">{current.description}</p>
+                <p className="line-clamp-3 text-[15px] leading-7 text-slate-600 [@media(max-height:820px)]:line-clamp-2 [@media(max-height:820px)]:leading-6">{current.description}</p>
                 <div className="mt-3"><RoomFacts property={property} unitType={current} /></div>
                 <DetailButton property={property} unitType={current} className="mt-4" />
               </div>
@@ -202,18 +203,24 @@ function RoomShowcase({ property }: { property: Property }) {
         </div>
       </div>
 
-      {/* Mobile / tablet cards */}
+      {/* Mobile / tablet: one room at a time, swipe or use the arrows to jump to the next room */}
       <div className="px-5 py-20 sm:px-8 stage:hidden">
-        <Heading eyebrow="Chỗ nghỉ tại Sóng" lead="Your space," accent="your kind of stay." />
-        <div className="mt-10 grid gap-6 sm:grid-cols-2">
+        <div className="mx-auto flex max-w-6xl items-end justify-between gap-4">
+          <Heading eyebrow="Chỗ nghỉ tại Sóng" lead="Your space," accent="your kind of stay." />
+          <div className="hidden shrink-0 gap-2 sm:flex"><RailButtons rail={rail} step={rail.current?.clientWidth ?? 600} label="Chỗ nghỉ" /></div>
+        </div>
+        <div ref={rail} className="mx-auto mt-10 flex max-w-6xl snap-x snap-mandatory gap-5 overflow-x-auto pb-4 [scrollbar-width:none]">
           {rooms.map((unitType, index) => (
-            <article key={unitType.unitTypeId} className="overflow-hidden rounded-[1.75rem] bg-white shadow-[0_12px_35px_rgba(8,47,85,0.09)]">
-              <img src={photoFor(unitType, index)} alt={`${unitType.name} tại Sóng Homestay`} className="aspect-[4/3] w-full object-cover" loading="lazy" />
-              <div className="p-6">
+            <article key={unitType.unitTypeId} className="w-[88%] shrink-0 snap-center overflow-hidden rounded-[1.75rem] bg-white shadow-[0_12px_35px_rgba(8,47,85,0.09)] md:grid md:w-full md:grid-cols-[1.1fr_.9fr]">
+              <div className="relative">
+                <img src={photoFor(unitType, index)} alt={`${unitType.name} tại Sóng Homestay`} className="aspect-[4/3] w-full object-cover md:h-full" loading="lazy" />
+                <span className="absolute bottom-4 left-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-[#0b2e4f]">{String(index + 1).padStart(2, '0')} / {String(rooms.length).padStart(2, '0')}</span>
+              </div>
+              <div className="flex flex-col p-6 md:justify-center md:p-8">
                 <h3 className="font-accent text-2xl text-[#0b2e4f]">{unitType.name}</h3>
                 <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{unitType.description}</p>
                 <div className="mt-3"><RoomFacts property={property} unitType={unitType} /></div>
-                <DetailButton property={property} unitType={unitType} className="mt-5" />
+                <DetailButton property={property} unitType={unitType} className="mt-5 self-start" />
               </div>
             </article>
           ))}
@@ -237,13 +244,15 @@ function Amenities() {
             return (
               <article key={title} className={`group relative overflow-hidden rounded-[1.75rem] bg-sky-100 ${index === 0 ? 'lg:col-span-2 lg:row-span-2' : ''} ${index === 3 ? 'lg:col-span-2' : ''}`}>
                 <div className={`relative w-full overflow-hidden ${index === 0 ? 'aspect-[4/3] lg:aspect-auto lg:h-full lg:min-h-[34rem]' : 'aspect-[4/3] lg:aspect-auto lg:h-[17rem]'}`}>
-                  <img
-                    src={src}
-                    alt={`${title} tại Sóng Homestay`}
-                    loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
-                    style={crop ? { objectPosition: crop.position, transform: `scale(${crop.scale})`, transformOrigin: crop.position } : undefined}
-                  />
+                  <div className="absolute inset-0" style={crop ? { transform: `scale(${crop.scale})`, transformOrigin: crop.position } : undefined}>
+                    <img
+                      src={src}
+                      alt={`${title} tại Sóng Homestay`}
+                      loading="lazy"
+                      className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-[1.06]"
+                      style={crop ? { objectPosition: crop.position } : undefined}
+                    />
+                  </div>
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#082f55]/85 via-[#082f55]/15 to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 p-6 text-white">

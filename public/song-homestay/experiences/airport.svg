@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-labelledby="t">
+  <title id="t">Máy bay cất cánh trên sân bay Đà Nẵng lúc hoàng hôn, xe riêng của Sóng Homestay chờ đón khách</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b2e4f"/>
+      <stop offset=".45" stop-color="#1565a8"/>
+      <stop offset=".8" stop-color="#5fb0e3"/>
+      <stop offset="1" stop-color="#a9dcf3"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".78" cy=".72" r=".38">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/>
+      <stop offset=".25" stop-color="#d9f1fb" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#d9f1fb" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".7"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d3a63"/>
+      <stop offset="1" stop-color="#082a49"/>
+    </linearGradient>
+    <linearGradient id="car" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d6e6f2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="520" fill="url(#sky)"/>
+  <rect width="1200" height="520" fill="url(#sun)"/>
+
+  <!-- soft clouds -->
+  <g fill="#ffffff">
+    <g opacity=".22"><ellipse cx="190" cy="120" rx="120" ry="18"/><ellipse cx="250" cy="106" rx="70" ry="20"/></g>
+    <g opacity=".16"><ellipse cx="980" cy="150" rx="140" ry="16"/><ellipse cx="930" cy="138" rx="60" ry="16"/></g>
+    <g opacity=".28"><ellipse cx="620" cy="300" rx="180" ry="14"/><ellipse cx="560" cy="290" rx="70" ry="14"/></g>
+  </g>
+
+  <!-- contrail + aircraft climbing to the right -->
+  <path d="M90 360 C 300 300, 470 230, 640 172" stroke="url(#trail)" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <g transform="translate(640 160) rotate(-17)" fill="#ffffff">
+    <!-- fuselage -->
+    <path d="M-150 -14 H 150 C 182 -14 205 -6 214 0 C 205 6 182 14 150 14 H -130 C -150 14 -160 8 -165 0 Z"/>
+    <!-- tail fin -->
+    <path d="M-150 -12 L -186 -78 L -160 -78 L -100 -12 Z"/>
+    <path d="M-150 4 L -196 22 L -176 26 L -128 8 Z" opacity=".9"/>
+    <!-- wings -->
+    <path d="M-10 4 L -90 74 L -58 76 L 60 8 Z"/>
+    <path d="M10 -8 L -40 -48 L -20 -50 L 50 -10 Z" opacity=".75"/>
+    <!-- engine -->
+    <rect x="-46" y="22" width="44" height="16" rx="8" fill="#e5f2fb"/>
+    <!-- windows -->
+    <g fill="#1565a8" opacity=".8">
+      <circle cx="-110" cy="-3" r="3"/><circle cx="-90" cy="-3" r="3"/><circle cx="-70" cy="-3" r="3"/><circle cx="-50" cy="-3" r="3"/>
+      <circle cx="-30" cy="-3" r="3"/><circle cx="-10" cy="-3" r="3"/><circle cx="10" cy="-3" r="3"/><circle cx="30" cy="-3" r="3"/>
+      <circle cx="50" cy="-3" r="3"/><circle cx="70" cy="-3" r="3"/><circle cx="90" cy="-3" r="3"/><circle cx="110" cy="-3" r="3"/>
+      <path d="M168 -8 C 182 -8 194 -5 200 -1 H 170 Z"/>
+    </g>
+  </g>
+
+  <!-- distant city / Sơn Trà ridge -->
+  <path d="M0 392 C 120 360 230 352 330 368 C 420 380 470 340 560 346 C 650 352 700 384 800 378 C 900 372 980 344 1080 350 C 1140 354 1180 366 1200 372 V 420 H 0 Z" fill="#2f78b3" opacity=".55"/>
+
+  <!-- terminal + control tower -->
+  <g fill="#0f4473">
+    <rect x="70" y="372" width="360" height="44" rx="6"/>
+    <path d="M60 376 C 150 352 340 352 440 376 Z"/>
+    <rect x="470" y="300" width="20" height="116"/>
+    <path d="M452 286 H 508 L 500 312 H 460 Z"/>
+    <rect x="462" y="276" width="36" height="10" rx="3"/>
+  </g>
+  <g fill="#a9dcf3" opacity=".7">
+    <rect x="96" y="384" width="300" height="8" rx="4"/>
+    <rect x="462" y="292" width="36" height="8" rx="2"/>
+  </g>
+
+  <!-- palms -->
+  <g fill="#082a49">
+    <path d="M1010 420 C 1012 380 1016 352 1024 326 L 1030 328 C 1024 356 1020 384 1020 420 Z"/>
+    <path d="M1027 326 C 1000 306 972 306 950 318 C 980 312 1004 318 1026 332 Z"/>
+    <path d="M1027 326 C 1050 300 1080 298 1100 310 C 1072 308 1050 316 1030 334 Z"/>
+    <path d="M1027 326 C 1016 296 996 284 974 284 C 998 292 1014 306 1024 332 Z"/>
+    <path d="M1027 326 C 1046 296 1066 288 1086 292 C 1064 296 1046 310 1032 332 Z"/>
+    <path d="M1112 420 C 1112 392 1116 372 1122 352 L 1127 354 C 1122 374 1120 394 1121 420 Z"/>
+    <path d="M1124 352 C 1104 338 1084 338 1068 346 C 1090 342 1106 346 1123 358 Z"/>
+    <path d="M1124 352 C 1142 334 1164 332 1180 340 C 1160 340 1142 346 1127 360 Z"/>
+    <path d="M1124 352 C 1118 330 1104 320 1088 320 C 1104 326 1116 338 1122 358 Z"/>
+  </g>
+
+  <!-- ground + road -->
+  <rect y="410" width="1200" height="110" fill="url(#ground)"/>
+  <rect y="452" width="1200" height="40" fill="#06223c"/>
+  <g fill="#a9dcf3" opacity=".55">
+    <rect x="20" y="470" width="60" height="4" rx="2"/><rect x="140" y="470" width="60" height="4" rx="2"/>
+    <rect x="260" y="470" width="60" height="4" rx="2"/><rect x="380" y="470" width="60" height="4" rx="2"/>
+    <rect x="500" y="470" width="60" height="4" rx="2"/><rect x="620" y="470" width="60" height="4" rx="2"/>
+    <rect x="740" y="470" width="60" height="4" rx="2"/><rect x="860" y="470" width="60" height="4" rx="2"/>
+    <rect x="980" y="470" width="60" height="4" rx="2"/><rect x="1100" y="470" width="60" height="4" rx="2"/>
+  </g>
+  <!-- runway lights -->
+  <g fill="#ffffff" opacity=".8">
+    <circle cx="40" cy="430" r="2.5"/><circle cx="120" cy="430" r="2.5"/><circle cx="200" cy="430" r="2.5"/><circle cx="280" cy="430" r="2.5"/>
+    <circle cx="360" cy="430" r="2.5"/><circle cx="440" cy="430" r="2.5"/><circle cx="520" cy="430" r="2.5"/><circle cx="600" cy="430" r="2.5"/>
+  </g>
+
+  <!-- private transfer car (7-seat SUV) waiting at the kerb -->
+  <g transform="translate(690 378)">
+    <ellipse cx="150" cy="92" rx="160" ry="8" fill="#03162a" opacity=".6"/>
+    <path d="M10 70 C 8 52 16 44 34 40 L 70 34 L 104 10 C 112 4 120 2 132 2 H 238 C 252 2 262 8 270 18 L 290 40 C 304 42 312 50 312 62 V 72 C 312 80 306 84 298 84 H 18 C 12 84 10 78 10 70 Z" fill="url(#car)"/>
+    <path d="M110 16 C 116 11 122 10 130 10 H 176 V 38 H 80 Z" fill="#1565a8" opacity=".85"/>
+    <path d="M184 10 H 236 C 246 10 252 14 258 22 L 274 38 H 184 Z" fill="#1565a8" opacity=".85"/>
+    <rect x="22" y="52" width="26" height="8" rx="4" fill="#ffffff"/>
+    <rect x="284" y="50" width="20" height="8" rx="4" fill="#ff8a80" opacity=".9"/>
+    <path d="M60 60 H 280" stroke="#9fbfd6" stroke-width="2"/>
+    <g>
+      <circle cx="78" cy="84" r="22" fill="#0b2e4f"/><circle cx="78" cy="84" r="10" fill="#c7d9e6"/>
+      <circle cx="244" cy="84" r="22" fill="#0b2e4f"/><circle cx="244" cy="84" r="10" fill="#c7d9e6"/>
+    </g>
+    <!-- Sóng wave mark on the door -->
+    <path d="M150 52 c 8 -6 16 -6 24 0 s 16 6 24 0" stroke="#1565a8" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

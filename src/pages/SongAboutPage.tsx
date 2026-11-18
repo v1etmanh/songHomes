@@ -23,7 +23,7 @@ export function SongAboutPage() {
       <section className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1fr_1.05fr]">
           <figure className="relative">
-            <img src="/song-homestay/stays/rooftop-house/05-bedroom-desk.webp" alt="Phòng ngủ sáng sủa với bàn làm việc cạnh cửa sổ lớn nhìn ra cây xanh" className="aspect-[4/3.4] w-full rounded-[2rem] object-cover shadow-[0_30px_70px_rgba(8,47,85,0.18)]" />
+            <img src="/song-homestay/about-pool-dining.webp" alt="Bàn ăn bên hồ bơi trong nhà, cầu thang xoắn và cây xanh tại Sóng Homestay" className="aspect-[4/3.4] w-full rounded-[2rem] object-cover shadow-[0_30px_70px_rgba(8,47,85,0.18)]" />
             <figcaption className="absolute -bottom-8 left-5 right-5 rounded-2xl bg-white p-5 shadow-xl sm:left-8 sm:right-auto sm:max-w-sm">
               <p className="font-accent text-xl leading-snug text-[#0b2e4f]">“Chữa lành từ không gian - chạm trong từng khoảnh khắc”</p>
               <p className="mt-2 text-sm text-slate-500">- Nguyễn Phát, Người sáng lập Sóng Homestay</p>

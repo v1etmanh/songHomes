@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       screens: {
-        // The scroll-driven room stage needs a tall viewport (heading + 8 rooms + description + button); shorter windows get the card grid.
-        stage: { raw: '(min-width: 1024px) and (min-height: 740px)' },
+        // The scroll-driven room stage (photo beside the room list) needs ~600px of height once compacted for short windows; smaller screens get the swipe carousel.
+        stage: { raw: '(min-width: 1024px) and (min-height: 600px)' },
       },
       fontFamily: {
         // Only the non-Sóng deployments (Consensus/showcase pages) still use Fraunces.

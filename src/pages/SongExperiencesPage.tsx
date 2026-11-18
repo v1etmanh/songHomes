@@ -222,19 +222,12 @@ function RequestPanel({ selections, onRemove, onSent }: { selections: Selection[
   );
 }
 
-function ServiceCard({ icon: Icon, image, imageAlt, badge, title, priceHint, price, children, footer, onChoose }: { icon: LucideIcon; image: string; imageAlt: string; badge: string; title: string; priceHint: string; price: ReactNode; children: ReactNode; footer: string; onChoose: () => void }) {
+function ServiceCard({ media, title, children, footer, onChoose }: { media: ReactNode; title: string; children: ReactNode; footer: string; onChoose: () => void }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-[0_14px_40px_rgba(8,47,85,0.09)]">
-      <div className="relative grid h-48 place-items-center overflow-hidden bg-gradient-to-br from-[#0b2e4f] via-[#1565a8] to-[#4a9ee0]">
-        <Icon className="h-20 w-20 text-white/90" strokeWidth={1.25} aria-hidden="true" />
-        <img src={image} alt={imageAlt} className="absolute inset-0 h-full w-full object-cover object-[50%_25%]" loading="lazy" />
-        <span className="absolute left-4 top-4 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-[#0b2e4f] shadow-sm">{badge}</span>
-      </div>
+      <div className="relative h-56 overflow-hidden">{media}</div>
       <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-start justify-between gap-4">
-          <h3 className="font-accent text-2xl text-[#0b2e4f]">{title}</h3>
-          <div className="text-right"><p className="text-xs text-slate-500">{priceHint}</p>{price}</div>
-        </div>
+        <h3 className="font-accent text-2xl text-[#0b2e4f]">{title}</h3>
         <div className="mt-3 flex-1 text-sm leading-6 text-slate-600">{children}</div>
         <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
           <p className="text-xs font-semibold text-[#087795]">{footer}</p>
@@ -276,8 +269,7 @@ export function SongExperiencesPage() {
       <div className="mx-auto max-w-6xl space-y-16">
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-3xl">
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#1565a8]">Trải nghiệm tại Sóng</p>
-            <h1 className="mt-3 text-4xl font-bold leading-tight text-[#0b2e4f] sm:text-5xl">Khám phá Đà Nẵng <span className="font-accent font-normal">theo cách của bạn</span></h1>
+            <h1 className="text-4xl font-bold leading-tight text-[#0b2e4f] sm:text-5xl">Khám phá Đà Nẵng <span className="block font-accent font-normal">theo cách của bạn</span></h1>
             <p className="mt-5 text-lg leading-8 text-slate-600">Sẵn sàng phương tiện di chuyển tận cửa cùng loạt gợi ý tour và điểm đến hấp dẫn được thiết kế riêng cho kỳ nghỉ của bạn tại Sóng Homestay.</p>
           </div>
           <a href="#selected-services" className="btn-secondary"><ClipboardList className="h-4 w-4" /> Dịch vụ đã chọn <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#1565a8] px-1.5 text-xs text-white">{selections.length}</span></a>
@@ -286,19 +278,36 @@ export function SongExperiencesPage() {
         <section aria-labelledby="transport-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 id="transport-title" className="text-2xl font-bold text-[#0b2e4f] sm:text-3xl">Chủ động hành trình từ lúc hạ cánh</h2>
-            <p className="text-sm text-slate-500">Chọn dịch vụ trực tiếp · Xác nhận nhanh cùng lễ tân Sóng</p>
           </div>
           <div className="mt-8 grid gap-6 md:grid-cols-2">
-            <ServiceCard icon={Bike} image="/song-homestay/experiences/motorbike.webp" imageAlt="Xe máy tay ga Honda màu trắng dành cho khách thuê tại Sóng Homestay" badge="Giao xe tận cửa homestay" title="Thuê xe máy" priceHint="Đồng giá xe tay ga" price={<p className="text-xl font-bold text-[#087795]">{vnd(BIKE_PRICE)} <span className="text-xs font-medium text-slate-500">/ ngày</span></p>} footer="Tiếp nhận yêu cầu · Xác nhận thủ công" onChoose={() => setModal('bike')}>
+            <ServiceCard
+              title="Thuê xe máy"
+              footer="Giao xe tận cửa homestay"
+              onChoose={() => setModal('bike')}
+              media={
+                <div className="flex h-full bg-gradient-to-br from-[#0b2e4f] via-[#1565a8] to-[#4a9ee0]">
+                  <div className="flex min-w-0 flex-1 flex-col justify-end p-6 text-white">
+                    <Bike className="h-10 w-10 text-white/90" strokeWidth={1.5} aria-hidden="true" />
+                    <p className="mt-3 font-accent text-2xl leading-tight">Tự do vi vu Đà Nẵng</p>
+                    <p className="mt-1 text-sm text-white/75">Sơn Trà · Biển Mỹ Khê · Phố ẩm thực</p>
+                  </div>
+                  <img src="/song-homestay/experiences/motorbike.webp" alt="Nhóm bạn trẻ vui vẻ trên hai xe tay ga Honda trắng và xanh" className="h-full w-[46%] shrink-0 object-cover object-[50%_78%]" loading="lazy" />
+                </div>
+              }
+            >
               <p>Xe tay ga giao tận nơi, kèm <strong>2 mũ bảo hiểm và áo mưa</strong>, giúp bạn tự do vi vu bán đảo Sơn Trà, biển Mỹ Khê và khám phá ẩm thực địa phương.</p>
               <p className="mt-4 flex items-center justify-between rounded-xl bg-[#eef4fa] px-4 py-3"><span><span className="block font-semibold text-[#0b2e4f]">Honda Vision • Air Blade • Lead 125</span><span className="text-xs text-slate-500">Tất cả dòng xe tay ga đều áp dụng chung một mức giá</span></span><span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#1565a8]">{vnd(BIKE_PRICE)}/ngày</span></p>
             </ServiceCard>
-            <ServiceCard icon={CarFront} image="/song-homestay/experiences/airport.webp" imageAlt="Máy bay cất cánh phía trên hàng xe riêng đón khách ở sân bay" badge="MIỄN PHÍ đón sân bay cho booking từ 3 đêm" title="Đưa đón sân bay" priceHint="Ưu đãi từ 3 đêm" price={<p className="text-xl font-bold text-[#087795]">0đ <span className="text-xs font-medium text-slate-500">chiều đón</span></p>} footer="Miễn phí chiều đón khi ở từ 3 đêm" onChoose={() => setModal('airport')}>
+            <ServiceCard
+              title="Đưa đón sân bay"
+              footer="Miễn phí chiều đón khi ở từ 3 đêm"
+              onChoose={() => setModal('airport')}
+              media={<img src="/song-homestay/experiences/airport.svg" alt="Máy bay cất cánh trên sân bay Đà Nẵng, xe riêng của Sóng Homestay chờ đón khách" className="h-full w-full object-cover" loading="lazy" />}
+            >
               <p>Tài xế đón đúng giờ tại sảnh sân bay Đà Nẵng (cách Sóng chỉ ~10-15 phút di chuyển), đưa bạn về tận cửa homestay an toàn, không lo chờ đợi.</p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {CARS.map((c) => <p key={c.id} className="rounded-xl bg-[#eef4fa] px-4 py-3"><span className="block font-semibold text-[#0b2e4f]">{c.label}</span><span className="text-sm font-bold text-[#1565a8]">{vnd(c.price)} / lượt</span></p>)}
               </div>
-              <p className="mt-2 text-xs text-slate-500">Bảng giá cho khách dưới 3 đêm hoặc chiều tiễn.</p>
             </ServiceCard>
           </div>
         </section>
@@ -306,8 +315,7 @@ export function SongExperiencesPage() {
         <RequestPanel selections={selections} onRemove={(id) => setSelections((current) => current.filter((s) => s.id !== id))} onSent={() => setSelections([])} />
 
         <section aria-labelledby="tours-title">
-          <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#1565a8]">Gợi ý hành trình bản địa</p>
-          <h2 id="tours-title" className="mt-3 text-3xl font-bold text-[#0b2e4f] sm:text-4xl">Gợi ý hành trình <span className="font-accent font-normal">khám phá địa phương</span></h2>
+          <h2 id="tours-title" className="text-3xl font-bold text-[#0b2e4f] sm:text-4xl">Gợi ý hành trình <span className="font-accent font-normal">khám phá địa phương</span></h2>
           <p className="mt-3 max-w-2xl text-slate-600">Tour ghép hoặc tour riêng linh hoạt theo nhóm khách. Nhấn <strong>“Chat với Sóng”</strong> để được tư vấn khung giờ đẹp và báo giá ưu đãi nhất - hoàn toàn miễn phí.</p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {TOURS.map((tour) => (
@@ -326,13 +334,13 @@ export function SongExperiencesPage() {
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-[2rem] bg-gradient-to-r from-[#0b2e4f] to-[#1565a8] px-7 py-12 text-white shadow-xl sm:px-12">
-          <Waves className="h-10 w-10 text-sky-200" aria-hidden="true" />
-          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">Feel at home - <span className="font-accent font-normal">Live like a local</span></h2>
-          <p className="mt-3 max-w-2xl text-white/80">Đặt phòng từ 3 đêm để được miễn phí đón sân bay, hoặc nhắn Sóng để thiết kế lịch trình riêng cho gia đình và nhóm bạn.</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/p/song-homestay/stays" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-[#0b2e4f] transition hover:-translate-y-0.5">Chọn chỗ nghỉ ngay</Link>
-            <button type="button" onClick={() => chat('Chào Sóng, mình muốn tư vấn lịch trình riêng...')} className="inline-flex items-center gap-2 rounded-full border border-white/40 px-6 py-3 font-bold text-white transition hover:bg-white/10"><MessageCircle className="h-4 w-4" aria-hidden="true" /> Chat tư vấn lịch trình riêng</button>
+        <section className="mx-auto max-w-4xl overflow-hidden rounded-[1.5rem] bg-gradient-to-r from-[#0b2e4f] to-[#1565a8] px-6 py-7 text-white shadow-lg sm:px-9">
+          <Waves className="h-7 w-7 text-sky-200" aria-hidden="true" />
+          <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Feel at home - <span className="font-accent font-normal">Live like a local</span></h2>
+          <p className="mt-2 max-w-2xl text-sm text-white/80">Đặt phòng từ 3 đêm để được miễn phí đón sân bay, hoặc nhắn Sóng để thiết kế lịch trình riêng cho gia đình và nhóm bạn.</p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link to="/p/song-homestay/stays" className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#0b2e4f] transition hover:-translate-y-0.5">Chọn chỗ nghỉ ngay</Link>
+            <button type="button" onClick={() => chat('Chào Sóng, mình muốn tư vấn lịch trình riêng...')} className="inline-flex items-center gap-2 rounded-full border border-white/40 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-white/10"><MessageCircle className="h-4 w-4" aria-hidden="true" /> Chat tư vấn lịch trình riêng</button>
           </div>
         </section>
       </div>
