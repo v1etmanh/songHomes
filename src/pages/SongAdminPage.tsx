@@ -17,8 +17,8 @@ import { ServicesDesk } from '../components/ServicesDesk';
 import { addMonths, startOfMonth, startOfWeek, startOfYear } from 'date-fns';
 import { todayIso, dateToIso, isoToDate, daysBetween, isIsoDate } from '../lib/dates';
 import { formatMoney } from '../lib/money';
-import type { BookingRow, Snapshot } from '../lib/songAdminTypes';
-import { SOURCE_LABELS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, managementStatus, shortDateTime, sourceLabel, stayRange, type CalendarStatus, type ManagementStatus, type SourceLabel } from '../lib/songBookingStatus';
+import type { BookingRow, ConflictRow, Snapshot } from '../lib/songAdminTypes';
+import { SOURCE_LABELS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, managementStatus, shortDate, shortDateTime, sourceLabel, stayRange, type CalendarStatus, type ManagementStatus, type SourceLabel } from '../lib/songBookingStatus';
 
 export type SongAdminSection = 'dashboard'|'accommodations'|'bookings'|'calendar'|'ical'|'services'|'conflicts'|'residence';
 
@@ -151,7 +151,8 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
   const colorOf = (unitId: Id<'units'>) => unitColors[Math.max(0, snapshot.units.findIndex(u => u._id === unitId)) % unitColors.length];
   const toggle = (key: string) => setMetric(metric === key ? '' : key);
   const periodNights = daysBetween(startDate, endDate);
-  const conflicts = snapshot.bookings.filter((row)=>row.syncConflict);
+  // Same rows as the conflicts page, dated by booking creation in the period.
+  const openConflicts = snapshot.conflictRows.filter((row) => !row.resolved);
   const owner = snapshot.canSeeRevenue;
   // Only the owner sees revenue (WEBSITE.pdf r5): other roles get three cards and no revenue detail.
   const shown = owner ? metric : metric === 'revenue' ? '' : metric;
@@ -169,12 +170,19 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
       {owner ? <KpiCard active={shown==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`${revenueRows.length} booking đã xác nhận`} tone="bg-blue-50 text-blue-600" icon={CircleDollarSign}/> : null}
       <KpiCard active={shown==='occupancy'} onClick={()=>toggle('occupancy')} label={METRICS.occupancy} value={`${snapshot.kpis.occupancyPercent}%`} detail={`${snapshot.units.filter(u=>u.status==='active').length} cơ sở đang theo dõi`} tone="bg-teal-50 text-teal-600" icon={Hotel}/>
       <KpiCard active={shown==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận · không tính đơn hủy`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
-      <KpiCard active={shown==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
+      <KpiCard active={shown==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={`${snapshot.kpis.conflictCount} chưa xử lý · ${snapshot.kpis.conflictResolvedCount} đã xử lý`} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
     </div>
     {/* Revenue opens a chart, occupancy per-unit bars; new bookings and conflicts open tables. The overview returns when closed. */}
     {shown ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[shown]} · Chi tiết`}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[shown]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
-      {shown==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
+      {shown==='conflicts' ? <div className="mt-2">
+         <p className="text-xs text-slate-500">Số lần trùng lịch theo ngày tạo booking trong kỳ (ngày booking sau được tạo), gồm booking đã xác nhận và chưa xác nhận.</p>
+         <div className="mt-3 grid gap-3 sm:grid-cols-3">{[['Tổng', snapshot.kpis.conflictCount + snapshot.kpis.conflictResolvedCount, '#10234a'], ['Chưa xử lý', snapshot.kpis.conflictCount, '#dc2626'], ['Đã xử lý', snapshot.kpis.conflictResolvedCount, '#059669']].map(([name, value, color]) => <div key={String(name)} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">{name}</p><p className="text-lg font-extrabold" style={{color: String(color)}}>{value} lần</p></div>)}</div>
+         <StackedBars format={(v) => `${v} lần`} empty="Không có lần trùng lịch nào trong kỳ." columns={conflictColumns(snapshot, startDate, endDate)}/>
+         <Legend items={[{ label: 'Chưa xử lý', color: '#dc2626' }, { label: 'Đã xử lý', color: '#059669' }]}/>
+         <div className="mt-4"><ConflictTable rows={snapshot.conflictRows} bare/></div>
+         <Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link>
+       </div> :
        shown==='occupancy' ? <>
          <div className="mt-4 space-y-3">{activeUnits.map(unit => {
            const nights = snapshot.occupancyByUnit.find(row => row.unitId === unit._id)?.nights ?? 0;
@@ -208,7 +216,7 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
       <ChannelReport report={snapshot.channelReport} />
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[1.45fr_1fr]">
-      <ConflictTable rows={conflicts.slice(0,6)} />
+      <ConflictTable rows={openConflicts.slice(0,6)} />
       <ConflictChart stats={snapshot.conflictStats} />
     </div>
     <ServicePie usage={snapshot.serviceUsage} money={owner ? money : null} />
@@ -301,10 +309,19 @@ function ConflictChart({ stats }: { stats: Snapshot['conflictStats'] }) {
 }
 
 /** Double-booking table: white card like the others; red is kept to the title strip. Cells never wrap, except the stay name. */
-function ConflictTable({ rows, bare = false }: { rows: BookingRow[]; bare?: boolean }) {
-  const table = <div className="overflow-x-auto"><table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Mã booking</th><th className="p-3">Chỗ nghỉ</th><th className="p-3">Nguồn</th><th className="p-3">Thời gian</th><th className="p-3">Trạng thái</th></tr></thead><tbody>{rows.map((row)=><tr key={row.bookingId} className="border-t border-slate-100"><td className="p-3 font-bold text-[#10234a]">{row.confirmationCode}</td><td className="min-w-48 p-3 !whitespace-normal">{row.unitName}</td><td className="p-3">{sourceLabel(row.source)}</td><td className="p-3">{stayRange(row.checkIn, row.checkOut)}</td><td className="p-3"><span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">Chưa xử lý</span></td></tr>)}{!rows.length?<tr><td colSpan={5} className="p-8 text-center text-slate-400">Không có cảnh báo trùng lịch.</td></tr>:null}</tbody></table></div>;
+function ConflictTable({ rows, bare = false }: { rows: ConflictRow[]; bare?: boolean }) {
+  const day = (iso: string) => `${iso.slice(8)}/${iso.slice(5,7)}`;
+  const table = <div className="overflow-x-auto"><table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Chỗ nghỉ</th><th className="p-3">Đêm trùng</th><th className="p-3">Booking</th><th className="p-3">Ngày tạo</th><th className="p-3">Trạng thái</th></tr></thead><tbody>{rows.map((row)=><tr key={row.id} className="border-t border-slate-100"><td className="min-w-48 p-3 font-semibold text-[#10234a] !whitespace-normal">{row.unitName}</td><td className="p-3">{day(row.overlapStart)} → {day(row.overlapEnd)}</td><td className="p-3 text-xs text-slate-600">{row.codes.map((code, i) => `${code}${row.sources[i] ? ` (${sourceLabel(row.sources[i])})` : ''}`).join(' ↔ ')}</td><td className="p-3">{shortDate(row.createdDate)}</td><td className="p-3">{row.resolved ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700" title={[row.byName, row.note].filter(Boolean).join(' · ')}>Đã xử lý{row.byName ? ` · ${row.byName}` : ''}</span> : <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">Chưa xử lý</span>}</td></tr>)}{!rows.length?<tr><td colSpan={5} className="p-8 text-center text-slate-400">Không có cảnh báo trùng lịch.</td></tr>:null}</tbody></table></div>;
   if (bare) return <div className="overflow-hidden rounded-xl border border-sky-100">{table}</div>;
   return <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm"><div className="flex items-center justify-between gap-2 border-b border-red-100 bg-red-50 px-5 py-3.5 text-red-700"><h2 className="flex items-center gap-2 font-extrabold"><AlertTriangle className="h-5 w-5"/>Cảnh báo Double Booking ({rows.length})</h2><Link className="whitespace-nowrap text-xs font-bold text-red-700 hover:underline" to="/admin/conflicts">Xử lý ↗</Link></div>{table}</section>;
+}
+
+/** Double bookings per creation-day bucket, stacked open (red) / handled (green). */
+function conflictColumns(snapshot: Snapshot, startDate: string, endDate: string): Column[] {
+  const buckets = timeBuckets(startDate, endDate);
+  const sums = new Map(buckets.keys.map(key => [key, { open: 0, resolved: 0 }]));
+  for (const row of snapshot.conflictsByDay) { const sum = sums.get(buckets.keyOf(row.date)); if (sum) { sum.open += row.open; sum.resolved += row.resolved; } }
+  return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: [{ label: 'Chưa xử lý', color: '#dc2626', value: sums.get(key)!.open }, { label: 'Đã xử lý', color: '#059669', value: sums.get(key)!.resolved }] }));
 }
 
 function Accommodations({ propertyId }: { propertyId: Id<'properties'> }) {

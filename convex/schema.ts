@@ -369,6 +369,10 @@ export default defineSchema({
     // the acknowledged pair out of the active warning queue while preserving
     // the imported booking and its audit notes.
     syncConflictAcknowledgedAt: v.optional(v.number()),
+    // The guest declared residence in person at the desk: staff confirmed it
+    // without re-typing the details, so the booking needs no per-adult records.
+    residenceDeclaredInPersonAt: v.optional(v.number()),
+    residenceDeclaredInPersonBy: v.optional(v.string()),
     confirmationCode: v.string(), // 'OS-7K3M2Q'
     priceBreakdown: v.optional(priceBreakdownSchema),
     giftCertificateId: v.optional(v.id('giftCertificates')),

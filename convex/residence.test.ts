@@ -168,7 +168,7 @@ describe('residence registration (Đăng ký tạm trú / tạm vắng)', () => 
     const resident=await desk.mutation(api.residence.staffRegister,{bookingId:guestData.bookingId, nationality:'Việt Nam',
       documentType:'passport',documentNumber:'P1234567',dateOfBirth:'1994-02-08',gender:'Nam',permanentAddress:'Đà Nẵng'});
     const list=await desk.query(api.residence.listForProperty,{propertyId});
-    expect(list[0]).toMatchObject({canReveal:true, documentNumber:'••••4567', recordCode:expect.stringMatching(/^TT-\d{4}-001$/)});
+    expect(list[0]).toMatchObject({canReveal:true, documentNumber:'P1234567', recordCode:expect.stringMatching(/^TT-\d{4}-001$/)});
     expect(await desk.query(api.residence.fullDocument,{id:resident})).toBe('P1234567');
     await expect(t.query(api.residence.fullDocument,{id:resident})).rejects.toThrow();
     const args={residentId:resident,start:'2026-09-25T18:00',end:'2026-09-26T10:00',reason:'Thăm gia đình',notes:'Gọi khi về'};

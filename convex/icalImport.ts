@@ -833,6 +833,37 @@ async function healExternalBookingsOnUnit(ctx: MutationCtx, unitId: Id<'units'>,
   }
 }
 
+/** Bookings that can collide on the calendar (same set the conflicts page scans). */
+export const CONFLICT_ACTIVE_STATUSES = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external']);
+
+/**
+ * Every pair of active bookings on the same unit whose half-open [checkIn,
+ * checkOut) ranges overlap and that nobody has acknowledged yet. Single source
+ * for the conflicts page and the dashboard KPI. A checkout on the same day as
+ * the next check-in is not a conflict.
+ */
+export function findConflictPairs(bookings: Doc<'bookings'>[]) {
+  const byUnit = new Map<Id<'units'>, Doc<'bookings'>[]>();
+  for (const booking of bookings) {
+    if (!CONFLICT_ACTIVE_STATUSES.has(booking.status)) continue;
+    byUnit.set(booking.unitId, [...(byUnit.get(booking.unitId) ?? []), booking]);
+  }
+  const pairs: Array<{ a: Doc<'bookings'>; b: Doc<'bookings'>; overlapStart: string; overlapEnd: string }> = [];
+  for (const list of byUnit.values()) {
+    list.sort((x, y) => x.checkIn.localeCompare(y.checkIn) || x.createdAt - y.createdAt);
+    for (let i = 0; i < list.length; i += 1) {
+      for (let j = i + 1; j < list.length; j += 1) {
+        const a = list[i];
+        const b = list[j];
+        if (a.checkIn < b.checkOut && b.checkIn < a.checkOut && !a.syncConflictAcknowledgedAt && !b.syncConflictAcknowledgedAt) {
+          pairs.push({ a, b, overlapStart: a.checkIn > b.checkIn ? a.checkIn : b.checkIn, overlapEnd: a.checkOut < b.checkOut ? a.checkOut : b.checkOut });
+        }
+      }
+    }
+  }
+  return pairs;
+}
+
 /**
  * Dashboard query for Admin iCal Sync & Double Booking Conflict Alert Center.
  * Returns all units with their iCal feed configurations, sync statuses, and
@@ -949,26 +980,11 @@ export const dashboardForProperty = query({
       availableUnitsForB: Array<{ unitId: Id<'units'>; name: string; slug: string }>;
     }> = [];
 
-    for (const unit of units) {
-      const unitActive = activeBookings
-        .filter((b) => b.unitId === unit._id)
-        .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.createdAt - b.createdAt);
-
-      for (let i = 0; i < unitActive.length; i += 1) {
-        for (let j = i + 1; j < unitActive.length; j += 1) {
-          const b1 = unitActive[i];
-          const b2 = unitActive[j];
-          // Half-open [checkIn, checkOut) overlap check:
-          // If b1.checkOut === b2.checkIn (e.g. 23/09 checkout and 23/09 check-in),
-          // b2.checkIn < b1.checkOut is FALSE -> no conflict!
-          if (
-            b1.checkIn < b2.checkOut &&
-            b2.checkIn < b1.checkOut &&
-            !b1.syncConflictAcknowledgedAt &&
-            !b2.syncConflictAcknowledgedAt
-          ) {
-            const overlapStart = b1.checkIn > b2.checkIn ? b1.checkIn : b2.checkIn;
-            const overlapEnd = b1.checkOut < b2.checkOut ? b1.checkOut : b2.checkOut;
+    // Same pair detection as the dashboard KPI (findConflictPairs), so both pages count alike.
+    const unitById = new Map(units.map((u) => [u._id, u]));
+    for (const { a: b1, b: b2, overlapStart, overlapEnd } of findConflictPairs(activeBookings)) {
+      const unit = unitById.get(b1.unitId);
+      if (!unit) continue;
             const overlapNights = nightsInRange(overlapStart, overlapEnd);
             conflicts.push({
               conflictId: `${b1._id}:${b2._id}`,
@@ -1007,9 +1023,6 @@ export const dashboardForProperty = query({
               availableUnitsForA: availableUnitsForRange(unit._id, b1.checkIn, b1.checkOut),
               availableUnitsForB: availableUnitsForRange(unit._id, b2.checkIn, b2.checkOut),
             });
-          }
-        }
-      }
     }
 
     return {

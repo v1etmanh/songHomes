@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { CheckCircle2, ChevronDown, Eye, EyeOff, FilePlus2, Mail, Pencil, Phone, Plus, Search } from 'lucide-react';
+import { CheckCircle2, ChevronDown, FilePlus2, Mail, Pencil, Phone, Plus, Search, UserCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '../../convex/_generated/api';
@@ -18,26 +19,49 @@ const STAY_HEADERS = ['Mã bản ghi', 'Mã booking', 'Khách hàng', 'Liên h�
 const LONG_STAY_HEADERS = ['Mã bản ghi', 'Khách lưu trú', 'Liên hệ', 'Booking', 'Cơ sở lưu trú', 'Thời gian lưu trú', 'Trạng thái', 'Thao tác'];
 
 function DocumentCell({ row }: { row: RecordRow }) {
-  const [open, setOpen] = useState(false);
-  const full = useQuery(
-    api.residence.fullDocument,
-    open && row.canReveal ? { id: row._id } : 'skip',
-  );
+  const label = row.documentType === 'passport' ? 'Hộ chiếu' : row.documentType.toUpperCase();
+  return <span className="whitespace-nowrap">{label} · <span className={row.canReveal ? 'font-mono font-semibold text-slate-800' : ''}>{row.documentNumber}</span></span>;
+}
+
+/** Everything the guest entered, for staff to file the declaration (shown under the row). */
+function RecordDetails({ row }: { row: RecordRow }) {
+  const items: Array<[string, string | undefined]> = [
+    ['Họ và tên', row.fullName], ['Quốc tịch', row.nationality], ['Ngày sinh', row.dateOfBirth ? stayDate(row.dateOfBirth) : undefined],
+    ['Giới tính', row.gender], ['Loại giấy tờ', row.documentType === 'passport' ? 'Hộ chiếu' : row.documentType.toUpperCase()], ['Số giấy tờ', row.documentNumber],
+    ['Số điện thoại', row.contactPhone], ['Email', row.contactEmail], ['Địa chỉ thường trú', row.permanentAddress],
+    ['Lý do lưu trú', row.reason], ['Thời gian lưu trú', stayRange(row.checkInDate, row.checkOutDate)], ['Địa chỉ lưu trú', row.stayAddress],
+  ];
   return (
-    <span className="whitespace-nowrap">
-      {row.documentType === 'passport' ? 'Hộ chiếu' : row.documentType.toUpperCase()} ·{' '}
-      {open && row.canReveal && full ? full : row.documentNumber}
-      {row.canReveal && (
-        <button
-          type="button"
-          className="ml-2 align-middle text-slate-500 hover:text-slate-800"
-          aria-label={open ? 'Ẩn số giấy tờ' : 'Hiện số giấy tờ'}
-          onClick={() => setOpen(!open)}
-        >
-          {open ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      )}
-    </span>
+    <dl className="grid gap-x-6 gap-y-2 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+      {items.map(([label, value]) => <div key={label}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="whitespace-normal font-semibold text-[#10234a]">{value || 'Khách chưa nhập'}</dd></div>)}
+      {row.notes ? <div className="sm:col-span-2 lg:col-span-3"><dt className="text-xs font-semibold text-slate-500">Ghi chú</dt><dd className="whitespace-normal text-slate-700">{row.notes}</dd></div> : null}
+    </dl>
+  );
+}
+
+function stayDate(iso: string) {
+  const day = iso.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}` : iso;
+}
+
+/** The guest declared in person at the desk: mark the booking declared without re-typing it (WEBSITE r6). */
+function DeclaredInPersonButton({ bookingId, code, name }: { bookingId: string; code: string; name: string }) {
+  const mark = useMutation(api.residence.markDeclaredInPerson);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [requestId] = useState(() => `in-person-${bookingId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  return (
+    <>
+      <button type="button" disabled={busy} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+        onClick={() => {
+          if (!window.confirm(`Xác nhận khách ${name} (${code}) đã khai báo lưu trú trực tiếp tại quầy?`)) return;
+          setBusy(true); setError('');
+          mark({ bookingId: bookingId as Id<'bookings'>, requestId }).catch((e) => { setError(extractErrorMessage(e)); setBusy(false); });
+        }}>
+        <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />{busy ? 'Đang lưu…' : 'Đã khai báo'}
+      </button>
+      {error ? <span role="alert" className="block text-xs text-red-700">{error}</span> : null}
+    </>
   );
 }
 
@@ -182,6 +206,7 @@ export function ResidenceDesk({
   const [form, setForm] = useState<RecordRow | 'new' | null>(null);
   const [statusRow, setStatusRow] = useState<RecordRow | null>(null);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
   if (!rows) return <Spinner label="Đang tải danh sách lưu trú…" />;
   const shown = (debounced ? found : rows) ?? [];
   const allDeclarations = rows.filter((row) => row.registrationType === 'tam_tru');
@@ -190,7 +215,7 @@ export function ResidenceDesk({
   const needle = foldText(debounced);
   // Bookings still missing a declaration, nearest check-in first.
   const pendingBookings = (bookings ?? [])
-    .filter((b) => b.status !== 'external' && b.adults > allDeclarations.filter((r) => r.bookingId === b.id).length)
+    .filter((b) => b.status !== 'external' && !b.declaredInPersonAt && b.adults > allDeclarations.filter((r) => r.bookingId === b.id).length)
     .filter((b) => !needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle))
     .map((b) => ({ ...b, due: urgencyLabel(b.start, b.end, today) }))
     .sort((a, b) => Number(b.due.urgent) - Number(a.due.urgent) || a.start.localeCompare(b.start));
@@ -204,7 +229,11 @@ export function ResidenceDesk({
       return true;
     });
   const bookingRows = filter === 'done' ? [] : filter === 'urgent' ? pendingBookings.filter((b) => b.due.urgent) : pendingBookings;
-  const empty = longStay ? !longStayRows.length : !recordRows.length && !bookingRows.length;
+  const inPersonRows = filter === 'done' || filter === 'all'
+    ? (bookings ?? []).filter((b) => b.declaredInPersonAt && (!needle || foldText(`${b.code} ${b.name} ${b.unit ?? ''}`).includes(needle))).sort((a, b) => (b.declaredInPersonAt ?? 0) - (a.declaredInPersonAt ?? 0))
+    : [];
+  const canReveal = rows.some((row) => row.canReveal) || (bookings ?? []).some((b) => b.phone || b.email);
+  const empty = longStay ? !longStayRows.length : !recordRows.length && !bookingRows.length && !inPersonRows.length;
   function startForm(id = '') {
     setInitialBooking(id);
     setForm('new');
@@ -262,6 +291,7 @@ export function ResidenceDesk({
       ) : (
         <p className="text-sm text-slate-500">Tạm trú áp dụng cho khách đặt phòng ở trên 30 ngày.</p>
       )}
+      {!canReveal && !longStay ? <p className="rounded-xl bg-sky-50 px-4 py-2.5 text-sm text-[#10234a]">Số giấy tờ và liên hệ đang được che. <Link className="font-bold text-[#1565a8] underline" to="/admin/login">Đăng nhập tài khoản nhân viên</Link> để xem đầy đủ thông tin khai báo.</p> : null}
       {debounced && found === undefined ? <p className="text-sm text-slate-500">Đang tìm…</p> : null}
       {error && <p role="alert" className="text-red-700">{error}</p>}
       <div className="overflow-x-auto">
@@ -315,15 +345,32 @@ export function ResidenceDesk({
                     <td>{stayRange(b.start, b.end)}<span className={`mt-1 block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${b.due.urgent ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{b.due.label}</span></td>
                     <td><StatusBadge done={false} label="Chưa khai báo" /></td>
                     <td>
-                      <button type="button" className={primaryAction} onClick={() => startForm(b.id)}>
-                        <FilePlus2 className="h-3.5 w-3.5" aria-hidden="true" />Nhập thông tin
-                      </button>
+                      <div className="flex gap-1.5">
+                        <button type="button" className={primaryAction} onClick={() => startForm(b.id)}>
+                          <FilePlus2 className="h-3.5 w-3.5" aria-hidden="true" />Nhập thông tin
+                        </button>
+                        <DeclaredInPersonButton bookingId={b.id} code={b.code} name={b.name} />
+                      </div>
                     </td>
+                  </tr>
+                ))}
+                {inPersonRows.map((b) => (
+                  <tr className="border-t [&>td]:p-2.5" key={`in-person:${b.id}`}>
+                    <td className="text-slate-400">—</td>
+                    <td className="font-semibold">{b.code}</td>
+                    <td className="font-semibold text-[#10234a]">{b.name}<span className="block text-xs font-normal text-slate-500">{b.adults} người lớn</span></td>
+                    <td><Contact phone={b.phone} email={b.email} /></td>
+                    <td className="text-xs text-slate-600">Khai báo tại quầy</td>
+                    <td className="min-w-44 !whitespace-normal">{b.unit}</td>
+                    <td>{stayRange(b.start, b.end)}</td>
+                    <td><StatusBadge done label="Đã ghi nhận" /></td>
+                    <td className="text-xs text-slate-500">{b.declaredInPersonBy}{b.declaredInPersonAt ? <span className="block">{new Date(b.declaredInPersonAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span> : null}</td>
                   </tr>
                 ))}
                 {recordRows.map((row) => {
                   const done = row.status !== 'declared';
-                  return (
+                  const open = expanded === row._id;
+                  return [
                     <tr key={row._id} className="border-t [&>td]:p-2.5">
                       <td>{row.recordCode}</td>
                       <td className="font-semibold">{row.confirmationCode}</td>
@@ -341,14 +388,20 @@ export function ResidenceDesk({
                             </button>
                           )}
                           {row.canReveal && (
+                            <button type="button" className={secondaryAction} aria-expanded={open} onClick={() => setExpanded(open ? null : row._id)}>
+                              <ChevronDown className={`h-3.5 w-3.5 transition ${open ? 'rotate-180' : ''}`} aria-hidden="true" />{open ? 'Thu gọn' : 'Chi tiết'}
+                            </button>
+                          )}
+                          {row.canReveal && (
                             <button type="button" className={secondaryAction} onClick={() => setForm(row)}>
                               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Sửa
                             </button>
                           )}
                         </div>
                       </td>
-                    </tr>
-                  );
+                    </tr>,
+                    open ? <tr key={`${row._id}:details`} className="[&>td]:px-2.5 [&>td]:pb-3"><td colSpan={9} className="!whitespace-normal"><RecordDetails row={row} /></td></tr> : null,
+                  ];
                 })}
               </>}
           </tbody>

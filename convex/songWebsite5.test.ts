@@ -42,7 +42,7 @@ async function setup() {
   return { t, ...ctx, pickup: byName('Đón sân bay'), dropoff: byName('Tiễn sân bay'), hold, addOnTotal };
 }
 
-describe('WEBSITE.pdf round 5 — booking rules', () => {
+describe('WEBSITE.pdf rounds 5–6 — Sóng rules', () => {
   beforeEach(() => vi.stubEnv('DEMO_MODE', 'true'));
   afterEach(() => vi.unstubAllEnvs());
 
@@ -96,17 +96,27 @@ describe('WEBSITE.pdf round 5 — booking rules', () => {
   it('logs how a double booking was handled and by whom; simulated conflict rate is capped at 10%', async () => {
     const s = await setup();
     const [a, b] = await s.t.run(async (db) => {
-      const base = { propertyId: s.property._id, unitId: s.unit._id, unitTypeId: s.unit.unitTypeId, nights: 2, adults: 1, children: 0, statusHistory: [], notes: [], createdAt: 1, updatedAt: 1 };
+      const may20 = Date.UTC(2027, 4, 20, 5);
+      const base = { propertyId: s.property._id, unitId: s.unit._id, unitTypeId: s.unit.unitTypeId, nights: 2, adults: 1, children: 0, statusHistory: [], notes: [], createdAt: may20, updatedAt: may20 };
       const first = await db.db.insert('bookings', { ...base, checkIn: '2027-06-01', checkOut: '2027-06-03', status: 'confirmed', source: 'manual:zalo', confirmationCode: 'OS-CONF-A' });
       const second = await db.db.insert('bookings', { ...base, checkIn: '2027-06-02', checkOut: '2027-06-04', status: 'external', source: 'ical:Airbnb', confirmationCode: 'EXT-CONF-B', syncConflict: true });
       return [first, second];
     });
     const before: any = await s.t.query(api.icalImport.dashboardForProperty, { propertyId: s.property._id });
     expect(before.conflicts.some((c: any) => c.conflictId === `${a}:${b}`)).toBe(true);
+    // Dashboard counts the same pairs as the conflicts page, by booking creation day (May), not stay dates (June).
+    const may = { propertyId: s.property._id, startDate: '2027-05-01', endDate: '2027-06-01' };
     const june = { propertyId: s.property._id, startDate: '2027-06-01', endDate: '2027-07-01' };
-    expect(((await s.t.query((api as any).songHomestay.adminSnapshot, june)) as any).conflictStats).toEqual({ confirmed: { open: 1, resolved: 0 }, pending: { open: 0, resolved: 0 } });
+    const openSnap: any = await s.t.query((api as any).songHomestay.adminSnapshot, may);
+    expect(openSnap.kpis.conflictCount).toBe(before.conflicts.length);
+    expect(openSnap.conflictStats).toEqual({ confirmed: { open: 1, resolved: 0 }, pending: { open: 0, resolved: 0 } });
+    expect(openSnap.conflictsByDay).toEqual([{ date: '2027-05-20', open: 1, resolved: 0 }]);
+    expect(((await s.t.query((api as any).songHomestay.adminSnapshot, june)) as any).kpis.conflictCount).toBe(0);
     await s.t.mutation(api.icalImport.resolveConflict, { bookingId: b, resolutionType: 'acknowledge', note: 'Đã hủy trên Airbnb', conflictWith: a });
-    expect(((await s.t.query((api as any).songHomestay.adminSnapshot, june)) as any).conflictStats).toEqual({ confirmed: { open: 0, resolved: 1 }, pending: { open: 0, resolved: 0 } });
+    const doneSnap: any = await s.t.query((api as any).songHomestay.adminSnapshot, may);
+    expect(doneSnap.conflictStats).toEqual({ confirmed: { open: 0, resolved: 1 }, pending: { open: 0, resolved: 0 } });
+    expect(doneSnap.kpis).toMatchObject({ conflictCount: 0, conflictResolvedCount: 1 });
+    expect(doneSnap.conflictRows[0]).toMatchObject({ resolved: true, codes: ['EXT-CONF-B', 'OS-CONF-A'], createdDate: '2027-05-20' });
     const log: any[] = await s.t.query((api as any).icalImport.resolvedConflicts, { propertyId: s.property._id });
     expect(log[0]).toMatchObject({ bookingCode: 'EXT-CONF-B', otherBookingCode: 'OS-CONF-A', method: 'acknowledge', note: 'Đã hủy trên Airbnb', overlapStart: '2027-06-02', overlapEnd: '2027-06-03' });
     expect(log[0].byName).toBeTruthy();
@@ -134,6 +144,57 @@ describe('WEBSITE.pdf round 5 — booking rules', () => {
     const notes = await s.t.run(async (db) => (await db.db.get(r.bookingId))!.notes.filter((n) => n.text === 'Khách hạ cánh 14:30'));
     expect(notes).toHaveLength(1);
     expect(notes[0].by).toBe('Lễ tân · Chủ nhà');
+  });
+
+  it('marks a booking declared in person at the desk, once, and clears the guest prompt', async () => {
+    const s = await setup();
+    const r = await s.hold('2027-08-01', '2027-08-03', [], { adults: 2 });
+    await s.t.mutation(api.bookings.confirmPayAtProperty, { bookingId: r.bookingId, confirmationCode: r.confirmationCode, email: 'khach@example.com' });
+    await s.t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: s.property._id, bookingId: r.bookingId, status: 'confirmed' });
+    await drain(s.t);
+    expect(((await s.t.withIdentity({ subject: `${await s.t.run(async (db) => (await db.db.get(r.bookingId))!.userId)}|x` }).query((api as any).guestAccount.pendingDeclarations, {})) as any).count).toBe(1);
+    await s.t.mutation((api as any).residence.markDeclaredInPerson, { bookingId: r.bookingId, requestId: 'desk-1' });
+    await s.t.mutation((api as any).residence.markDeclaredInPerson, { bookingId: r.bookingId, requestId: 'desk-2' });
+    const booking = await s.t.run(async (db) => db.db.get(r.bookingId));
+    expect(booking!.residenceDeclaredInPersonAt).toBeTruthy();
+    expect(booking!.notes.filter((n) => n.text.startsWith('Khách khai báo lưu trú trực tiếp')).length).toBe(1);
+    expect(((await s.t.withIdentity({ subject: `${booking!.userId}|x` }).query((api as any).guestAccount.pendingDeclarations, {})) as any).count).toBe(0);
+    await drain(s.t);
+  });
+
+  it('shows full declaration details only to staff; anonymous demo readers see the masked number', async () => {
+    const s = await setup();
+    const r = await s.hold('2027-09-01', '2027-09-03', []);
+    await s.t.mutation(api.bookings.confirmPayAtProperty, { bookingId: r.bookingId, confirmationCode: r.confirmationCode, email: 'khach@example.com' });
+    await s.t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: s.property._id, bookingId: r.bookingId, status: 'confirmed' });
+    await s.t.run(async (db) => db.db.insert('residenceRegistrations', {
+      propertyId: s.property._id, bookingId: r.bookingId, fullName: 'Nguyễn An', documentType: 'cccd', documentNumber: '079123456789', nationality: 'Việt Nam',
+      registrationType: 'tam_tru', checkInDate: '2027-09-01', checkOutDate: '2027-09-03', status: 'verified', submittedBy: 'guest', createdAt: 1, updatedAt: 1,
+    }));
+    const anonymous: any[] = await s.t.query(api.residence.listForProperty, { propertyId: s.property._id });
+    expect(anonymous.find((row) => row.fullName === 'Nguyễn An').documentNumber).toBe('••••6789');
+    const staffUser = await s.t.run(async (db) => {
+      const userId = await db.db.insert('users', { email: 'staff6@example.com', name: 'Lễ tân 6' });
+      await db.db.insert('staffProfiles', { userId, name: 'Lễ tân 6', role: 'owner', active: true, createdAt: 1 });
+      return userId;
+    });
+    const staff: any[] = await s.t.withIdentity({ subject: `${staffUser}|s` }).query(api.residence.listForProperty, { propertyId: s.property._id });
+    expect(staff.find((row) => row.fullName === 'Nguyễn An')).toMatchObject({ documentNumber: '079123456789', canReveal: true, contactEmail: 'khach@example.com' });
+    await drain(s.t);
+  });
+
+  it('service schedule lists services of confirmed bookings, never of pending requests', async () => {
+    const s = await setup();
+    const bike = s.addOns.find((a) => a.name.startsWith('Thuê xe máy'))!;
+    const confirmed = await s.hold('2027-10-01', '2027-10-04', [{ addOnId: bike._id, quantity: 2 }]);
+    const pending = await s.hold('2027-10-10', '2027-10-12', [{ addOnId: s.pickup._id, quantity: 1 }]);
+    for (const r of [confirmed, pending]) await s.t.mutation(api.bookings.confirmPayAtProperty, { bookingId: r.bookingId, confirmationCode: r.confirmationCode, email: 'khach@example.com' });
+    await s.t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: s.property._id, bookingId: confirmed.bookingId, status: 'confirmed' });
+    const overview: any = await s.t.query(api.songHomestay.serviceOverview, { propertyId: s.property._id, startDate: '2027-10-01', endDate: '2027-11-01' });
+    const codes = overview.rows.map((row: any) => row.code);
+    expect(codes).toContain(confirmed.confirmationCode);
+    expect(codes).not.toContain(pending.confirmationCode);
+    await drain(s.t);
   });
 
   it('counts infants toward max occupancy', async () => {

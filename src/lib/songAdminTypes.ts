@@ -14,6 +14,8 @@ export type NewBookingRow = {
   date: string; unitId: Id<'units'>; code: string; status: string; bookingId: Id<'bookings'>; guestName: string; unitName: string;
   checkIn: string; checkOut: string; source: string; hasServices: boolean;
 };
+/** One double booking (open pair or handled resolution), dated by the later booking's creation day. */
+export type ConflictRow = { id: string; unitName: string; overlapStart: string; overlapEnd: string; codes: string[]; sources: string[]; createdDate: string; resolved: boolean; method?: string; byName?: string; note?: string };
 export type Snapshot = {
   occupancyByUnit: Array<{unitId:Id<'units'>;nights:number}>;
   newBookings: NewBookingRow[];
@@ -22,8 +24,10 @@ export type Snapshot = {
   canSeeRevenue: boolean;
   /** Double bookings in the period: confirmed bookings vs unconfirmed requests, each split open/handled. */
   conflictStats: { confirmed: { open: number; resolved: number }; pending: { open: number; resolved: number } };
+  conflictsByDay: Array<{ date: string; open: number; resolved: number }>;
+  conflictRows: ConflictRow[];
   channelReport: { total: number; channels: Array<{ source: string; count: number }>; direct: number; directWithServices: number };
-  kpis: { totalBookings: number; pendingBookings: number; confirmedBookings: number; currentGuests: number; roomRevenueCents: number; serviceRevenueCents: number; totalRevenueCents: number; occupancyPercent: number; conflictCount: number };
+  kpis: { totalBookings: number; pendingBookings: number; confirmedBookings: number; currentGuests: number; roomRevenueCents: number; serviceRevenueCents: number; totalRevenueCents: number; occupancyPercent: number; conflictCount: number; conflictResolvedCount: number };
   bookings: BookingRow[];
   units: Array<{ _id: Id<'units'>; name: string; status: string; sortOrder: number; type?: { name: string } }>;
   dailyRevenue: Array<{ date: string; roomCents: number; serviceCents: number; totalCents: number }>;

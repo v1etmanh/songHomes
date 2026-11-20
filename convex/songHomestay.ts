@@ -3,9 +3,10 @@ import { mutation, query } from './_generated/server';
 import { internal } from './_generated/api';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { addOnLineCents, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode } from '../shared/pricing';
+import { addOnLineCents, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { residenceProgress } from './residence';
+import { findConflictPairs } from './icalImport';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 
 const activeBookingStatuses = new Set(['hold', 'pending', 'confirmed', 'checked_in', 'external', 'blocked']);
@@ -155,6 +156,7 @@ export const serviceOverview = query({
     let revenue = 0;
     const customers = new Set<string>();
     const rows = [];
+    const today = todayInTimezone(property.timezone);
     for (const service of services) {
       const lines = await ctx.db.query('bookingAddOns').withIndex('by_addOn', q => q.eq('addOnId', service._id)).collect();
       for (const line of lines) {
@@ -162,16 +164,22 @@ export const serviceOverview = query({
         if (!booking || booking.propertyId !== args.propertyId || !['confirmed','checked_in','checked_out'].includes(booking.status)) continue;
         const saleDate = day.format(line.soldAt);
         if (saleDate >= args.startDate && saleDate < args.endDate) revenue += addOnLineCents(line);
-        if (booking.status !== 'checked_in') continue;
+        // Service schedule (WEBSITE r6): every service of a confirmed or in-house booking whose stay
+        // touches the selected period or is still ahead, so the desk can prepare it before arrival.
+        if (!['confirmed', 'checked_in'].includes(booking.status)) continue;
+        const relevant = (booking.checkIn < args.endDate && booking.checkOut > args.startDate) || booking.checkOut > today;
+        if (!relevant) continue;
         const [guest, unit] = await Promise.all([booking.guestId ? ctx.db.get(booking.guestId) : null, ctx.db.get(booking.unitId)]);
-        if (!line.completedAt) customers.add(booking.guestId ?? booking._id);
-        rows.push({id: line._id, guest: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA', code: booking.confirmationCode,
-          unit: unit?.name ?? 'Chỗ nghỉ', checkIn: booking.checkIn, checkOut: booking.checkOut,
-          service: line.nameSnapshot, unitLabel: service.unitLabel,quantity: line.quantity, amountCents: addOnLineCents(line),
-          completed: Boolean(line.completedAt)});
+        if (booking.status === 'checked_in' && !line.completedAt) customers.add(booking.guestId ?? booking._id);
+        const serviceNote = booking.notes.filter((note) => note.by === 'Khách (dịch vụ)').map((note) => note.text).join(' | ');
+        rows.push({id: line._id, guest: guest?.name ?? booking.notes[0]?.text ?? 'Khách OTA', phone: guest?.phone ?? '', code: booking.confirmationCode,
+          unit: unit?.name ?? 'Chỗ nghỉ', checkIn: booking.checkIn, checkOut: booking.checkOut, bookingStatus: booking.status,
+          service: line.nameSnapshot, unitLabel: service.unitLabel, quantity: line.quantity, freeQuantity: line.freeQuantity ?? 0,
+          amountCents: addOnLineCents(line), serviceNote, completed: Boolean(line.completedAt)});
       }
     }
-    return {active: services.filter(s => s.active).length, total: services.length, customers: customers.size, revenue, rows};
+    rows.sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.unit.localeCompare(b.unit));
+    return {active: services.filter(s => s.active).length, total: services.length, customers: customers.size, revenue, today, rows};
   },
 });
 
@@ -782,27 +790,57 @@ export const adminSnapshot = query({
         notes: booking.notes.filter((note) => note.by !== 'sample-data').map((note) => ({ ts: note.ts, text: note.text, by: note.by ?? '' })),
       });
     }
-    // Double bookings in the period, split by handled/open and by whether the
-    // booking was confirmed or still a request. Open = flagged and not yet
-    // acknowledged; handled = a conflictResolutions row whose overlap falls in
-    // the period. A booking cancelled to resolve a conflict is classified by
-    // the status it had before the cancellation.
+    // Double bookings, counted exactly like the conflicts page (WEBSITE r6):
+    // open = unacknowledged overlapping pairs (findConflictPairs), handled =
+    // conflictResolutions rows. A conflict is dated by the creation day of the
+    // later booking of the pair (when the clash arose) and counted when that
+    // day falls in the period. "Chưa xác nhận" = either side was still a
+    // request; a booking cancelled to resolve it counts with its prior status.
     const unconfirmed = new Set(['pending', 'hold']);
+    const priorStatus = (row: { status: string; statusHistory: Array<{ status: string }> } | null) => {
+      if (!row) return 'pending';
+      if (row.status !== 'cancelled') return row.status;
+      const before = row.statusHistory.filter((step) => step.status !== 'cancelled');
+      return before[before.length - 1]?.status ?? 'pending';
+    };
     const conflictStats = { confirmed: { open: 0, resolved: 0 }, pending: { open: 0, resolved: 0 } };
-    for (const row of inRange) {
-      if (row.syncConflict && !row.syncConflictAcknowledgedAt) conflictStats[unconfirmed.has(row.status) ? 'pending' : 'confirmed'].open += 1;
+    const conflictsByDayMap = new Map<string, { open: number; resolved: number }>();
+    const conflictRows: Array<{ id: string; unitName: string; overlapStart: string; overlapEnd: string; codes: string[]; sources: string[]; createdDate: string; resolved: boolean; method?: string; byName?: string; note?: string }> = [];
+    const count = (createdDate: string, statuses: string[], resolved: boolean) => {
+      const bucket = statuses.some((status) => unconfirmed.has(status)) ? 'pending' : 'confirmed';
+      conflictStats[bucket][resolved ? 'resolved' : 'open'] += 1;
+      const day = conflictsByDayMap.get(createdDate) ?? { open: 0, resolved: 0 };
+      day[resolved ? 'resolved' : 'open'] += 1;
+      conflictsByDayMap.set(createdDate, day);
+    };
+    for (const pair of findConflictPairs(bookings)) {
+      const createdDate = dateFormat.format(Math.max(pair.a.createdAt, pair.b.createdAt));
+      if (createdDate < args.startDate || createdDate >= args.endDate) continue;
+      count(createdDate, [pair.a.status, pair.b.status], false);
+      conflictRows.push({
+        id: `${pair.a._id}:${pair.b._id}`, unitName: unitById.get(String(pair.a.unitId))?.name ?? 'Chỗ nghỉ',
+        overlapStart: pair.overlapStart, overlapEnd: pair.overlapEnd,
+        codes: [pair.a.confirmationCode, pair.b.confirmationCode], sources: [pair.a.source, pair.b.source], createdDate, resolved: false,
+      });
     }
     const resolutions = await ctx.db
       .query('conflictResolutions')
       .withIndex('by_property_at', (q) => q.eq('propertyId', args.propertyId))
       .collect();
     for (const resolution of resolutions) {
-      if (!(resolution.overlapStart < args.endDate && resolution.overlapEnd > args.startDate)) continue;
-      const booking = await ctx.db.get(resolution.bookingId);
-      const history = booking?.statusHistory.filter((step) => step.status !== 'cancelled') ?? [];
-      const status = booking?.status === 'cancelled' ? history[history.length - 1]?.status ?? 'pending' : booking?.status ?? 'pending';
-      conflictStats[unconfirmed.has(status) ? 'pending' : 'confirmed'].resolved += 1;
+      const [first, second] = await Promise.all([ctx.db.get(resolution.bookingId), resolution.otherBookingId ? ctx.db.get(resolution.otherBookingId) : null]);
+      const createdDate = dateFormat.format(Math.max(first?.createdAt ?? resolution.at, second?.createdAt ?? 0));
+      if (createdDate < args.startDate || createdDate >= args.endDate) continue;
+      count(createdDate, [priorStatus(first), ...(second ? [priorStatus(second)] : [])], true);
+      conflictRows.push({
+        id: resolution._id, unitName: resolution.unitName, overlapStart: resolution.overlapStart, overlapEnd: resolution.overlapEnd,
+        codes: [resolution.bookingCode, ...(resolution.otherBookingCode ? [resolution.otherBookingCode] : [])],
+        sources: [first?.source ?? '', ...(second ? [second.source] : [])], createdDate, resolved: true,
+        method: resolution.method, byName: resolution.byName, note: resolution.note,
+      });
     }
+    conflictRows.sort((x, y) => Number(x.resolved) - Number(y.resolved) || y.createdDate.localeCompare(x.createdDate));
+    const conflictsByDay = [...conflictsByDayMap.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([date, value]) => ({ date, ...value }));
 
     const periodNights = daysBetween(args.startDate, args.endDate);
     const activeUnits = units.filter(row => row.status === 'active');
@@ -822,6 +860,8 @@ export const adminSnapshot = query({
       property: { name: property.name, currency: property.currency },
       canSeeRevenue,
       conflictStats,
+      conflictsByDay,
+      conflictRows,
       newBookings,
       channelReport: {
         total: created.length,
@@ -839,7 +879,9 @@ export const adminSnapshot = query({
         serviceRevenueCents: canSeeRevenue ? serviceRevenueCents : 0,
         totalRevenueCents: canSeeRevenue ? roomRevenueCents + serviceRevenueCents : 0,
         occupancyPercent: activeUnits.length && periodNights ? Math.min(100, Math.round((occupiedNights / (activeUnits.length * periodNights)) * 100)) : 0,
-        conflictCount: inRange.filter((row) => row.syncConflict && !row.syncConflictAcknowledgedAt).length,
+        // Same count as the conflicts page: open pairs dated by booking creation in the period.
+        conflictCount: conflictStats.confirmed.open + conflictStats.pending.open,
+        conflictResolvedCount: conflictStats.confirmed.resolved + conflictStats.pending.resolved,
       },
       bookings: bookingRows.sort((a, b) => a.checkIn.localeCompare(b.checkIn)),
       units: units.sort((a, b) => a.sortOrder - b.sortOrder).map((row) => ({ ...row, type: typeById.get(String(row.unitTypeId)) })),

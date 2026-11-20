@@ -46,6 +46,8 @@ export async function residenceProgress(ctx: QueryCtx | MutationCtx, booking: Do
     .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
     .collect();
   const declared = rows.filter((row) => row.registrationType === 'tam_tru').length;
+  // Declared in person at the desk: complete, whatever was typed in.
+  if (booking.residenceDeclaredInPersonAt) return { required, declared: Math.max(declared, required), missing: 0 };
   return { required, declared, missing: Math.max(0, required - declared) };
 }
 
@@ -456,7 +458,8 @@ export const listForProperty = query({
       }
       result.push({
         _id: row._id, bookingId: row.bookingId, fullName: row.fullName, nationality: row.nationality,
-        documentType: row.documentType, documentNumber: args.exportFull ? row.documentNumber : '••••' + row.documentNumber.slice(-4),
+        // Staff with write access see the full record (WEBSITE r6); anonymous demo readers keep the masked number.
+        documentType: row.documentType, documentNumber: args.exportFull || canReveal ? row.documentNumber : '••••' + row.documentNumber.slice(-4),
         dateOfBirth: canReveal ? row.dateOfBirth : undefined, phone: canReveal ? row.phone : undefined,
         permanentAddress: args.exportFull || canReveal ? row.permanentAddress : undefined,
         canReveal, registrationType: row.registrationType, checkInDate: row.checkInDate, checkOutDate: row.checkOutDate,
@@ -574,6 +577,8 @@ export const bookingOptions = query({
         id: b._id, code: b.confirmationCode, name: guest?.name || b.notes[0]?.text || 'Khách OTA',
         adults: b.adults, unit: (await ctx.db.get(b.unitId))?.name, start: b.checkIn, end: b.checkOut, status: b.status,
         phone: staff ? guest?.phone || undefined : undefined, email: staff ? guest?.email || undefined : undefined,
+        declaredInPersonAt: b.residenceDeclaredInPersonAt ?? null,
+        declaredInPersonBy: b.residenceDeclaredInPersonBy ?? null,
       };
     }));
   },
@@ -692,5 +697,53 @@ export const setTemporaryResidenceDeclared = mutation({
     const now = Date.now();
     await ctx.db.patch(row._id, {temporaryResidenceDeclaredAt: declared ? now : undefined, updatedAt: now});
     return { updated: true };
+  },
+});
+
+/**
+ * The guest declared residence in person at the desk (WEBSITE r6): staff marks
+ * the booking declared without typing the details again. Idempotent on the
+ * caller's requestId (convention #15); a second click is a no-op.
+ */
+export const markDeclaredInPerson = mutation({
+  args: { bookingId: v.id('bookings'), requestId: v.string() },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) throw new ConvexError('BOOKING_NOT_FOUND');
+    let actorName = 'Lễ tân';
+    let actorUserId: Id<'users'> | null = null;
+    try {
+      const access = await requireMutationPropertyCapability(ctx, booking.propertyId, 'booking.write', 'residence.declared_in_person');
+      actorName = access.profile.name;
+      actorUserId = access.userId;
+    } catch (error) {
+      if (process.env.DEMO_MODE !== 'true') throw error;
+    }
+    const requestId = args.requestId.trim();
+    if (!requestId || requestId.length > 100) throw new ConvexError('REQUEST_ID_REQUIRED');
+    const prior = await ctx.db.query('operationRequests').withIndex('by_property_request', (q) => q.eq('propertyId', booking.propertyId).eq('requestId', requestId)).unique();
+    if (prior) {
+      if (prior.action !== 'residence.declared_in_person') throw new ConvexError('IDEMPOTENCY_KEY_REUSED');
+      return JSON.parse(prior.resultJson) as { updated: boolean };
+    }
+    if (!['pending', 'confirmed', 'checked_in', 'checked_out'].includes(booking.status)) {
+      throw new ConvexError({ code: 'BOOKING_NOT_ACTIVE', message: 'Booking này không cần khai báo lưu trú.' });
+    }
+    let result = { updated: false };
+    if (!booking.residenceDeclaredInPersonAt) {
+      const now = Date.now();
+      await ctx.db.patch(booking._id, {
+        residenceDeclaredInPersonAt: now,
+        residenceDeclaredInPersonBy: actorName,
+        notes: [...booking.notes, { ts: now, text: `Khách khai báo lưu trú trực tiếp tại quầy · ${actorName}`, by: `Lễ tân · ${actorName}` }],
+        updatedAt: now,
+      });
+      await notifyIfDeclarationComplete(ctx, booking._id);
+      result = { updated: true };
+    }
+    if (actorUserId) {
+      await ctx.db.insert('operationRequests', { propertyId: booking.propertyId, requestId, action: 'residence.declared_in_person', actorUserId, resultJson: JSON.stringify(result), createdAt: Date.now() });
+    }
+    return result;
   },
 });
