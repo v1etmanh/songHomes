@@ -26,6 +26,8 @@ type Catalog = {
     taxable: boolean;
     active: boolean;
     sortOrder: number;
+    /** Stay-length perk: one unit free from this many nights (null = none). */
+    freeFirstUnitMinNights: number | null;
   }>;
 };
 
@@ -82,6 +84,7 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState('lần');
+  const [newServiceFreeNights, setNewServiceFreeNights] = useState('');
 
   const selectedUnit = useMemo(
     () => catalog?.units.find((unit) => String(unit.unitId) === unitId),
@@ -196,11 +199,12 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
 
       {tab === 'services' ? (
         <div className="mt-5 space-y-4">
-          <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]">
+          <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 md:grid-cols-[1.5fr_1fr_1fr_1fr_auto]">
             <label><span className="field-label">Tên dịch vụ mới</span><input className="field-input" value={newServiceName} onChange={(event) => setNewServiceName(event.target.value)} /></label>
             <label><span className="field-label">Giá (VND)</span><input className="field-input" type="number" min={0} value={newServicePrice} onChange={(event) => setNewServicePrice(event.target.value)} /></label>
             <label><span className="field-label">Đơn vị</span><input className="field-input" value={newServiceUnit} onChange={(event) => setNewServiceUnit(event.target.value)} /></label>
-            <button type="button" className="btn-primary self-end" disabled={working || !newServiceName || !newServicePrice || !newServiceUnit} onClick={() => void run(async () => { await createAddOn({ propertyId, name: newServiceName, priceCents: Math.round(Number(newServicePrice) * 100), unitLabel: newServiceUnit, taxable: false }); setNewServiceName(''); setNewServicePrice(''); }, 'Đã thêm dịch vụ mới.')}><Plus className="h-4 w-4" /> Thêm dịch vụ</button>
+            <label><span className="field-label">Miễn phí 1 lượt khi ở từ (đêm)</span><input className="field-input" type="number" min={1} max={60} placeholder="Không áp dụng" value={newServiceFreeNights} onChange={(event) => setNewServiceFreeNights(event.target.value)} /></label>
+            <button type="button" className="btn-primary self-end" disabled={working || !newServiceName || !newServicePrice || !newServiceUnit} onClick={() => void run(async () => { await createAddOn({ propertyId, name: newServiceName, priceCents: Math.round(Number(newServicePrice) * 100), unitLabel: newServiceUnit, taxable: false, freeFirstUnitMinNights: newServiceFreeNights.trim() ? Number(newServiceFreeNights) : null }); setNewServiceName(''); setNewServicePrice(''); setNewServiceFreeNights(''); }, 'Đã thêm dịch vụ mới.')}><Plus className="h-4 w-4" /> Thêm dịch vụ</button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {catalog?.addOns.filter((service) => service.active).map((service) => <ServiceEditor key={service.addOnId} service={service} currency={catalog.property.currency} disabled={working} onSave={(values) => run(() => updateAddOn({ propertyId, addOnId: service.addOnId, ...values }), `Đã cập nhật ${values.name}.`)} />)}
@@ -221,11 +225,12 @@ function UnitEditor({ unit, disabled, onSave }: { unit: Catalog['units'][number]
   return <div className="rounded-xl border border-stone-200 p-4"><p className="text-xs text-stone-500">/{unit.slug}</p><label className="mt-2 block"><span className="field-label">Tên căn</span><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="mt-3 block"><span className="field-label">Trạng thái</span><select className="field-input" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="active">Đang kinh doanh</option><option value="coming_soon">Sắp mở</option><option value="offline">Ngừng kinh doanh</option></select></label><button type="button" className="btn-secondary mt-3" disabled={disabled || !name.trim()} onClick={() => void onSave(name, status)}><Save className="h-4 w-4" /> Lưu</button></div>;
 }
 
-function ServiceEditor({ service, currency, disabled, onSave }: { service: Catalog['addOns'][number]; currency: string; disabled: boolean; onSave: (values: { name: string; priceCents: number; unitLabel: string; taxable: boolean; active: boolean }) => Promise<unknown> }) {
+function ServiceEditor({ service, currency, disabled, onSave }: { service: Catalog['addOns'][number]; currency: string; disabled: boolean; onSave: (values: { name: string; priceCents: number; unitLabel: string; taxable: boolean; active: boolean; freeFirstUnitMinNights: number | null }) => Promise<unknown> }) {
+  const [freeNights, setFreeNights] = useState(service.freeFirstUnitMinNights ? String(service.freeFirstUnitMinNights) : '');
   const [name, setName] = useState(service.name);
   const [price, setPrice] = useState(String(service.priceCents / 100));
   const [unitLabel, setUnitLabel] = useState(service.unitLabel);
   const [taxable, setTaxable] = useState(service.taxable);
   const [active, setActive] = useState(service.active);
-  return <div className="rounded-xl border border-stone-200 p-4"><p className="text-xs font-semibold text-emerald-700">{service.active ? 'Đang cung cấp' : 'Tạm ngưng'} · {formatMoney(service.priceCents, currency)} / {service.unitLabel}</p><label className="mt-2 block"><span className="field-label">Tên dịch vụ</span><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></label><div className="mt-3 grid grid-cols-2 gap-3"><label><span className="field-label">Giá (VND)</span><input className="field-input" type="number" min={0} value={price} onChange={(event) => setPrice(event.target.value)} /></label><label><span className="field-label">Đơn vị</span><input className="field-input" value={unitLabel} onChange={(event) => setUnitLabel(event.target.value)} /></label></div><div className="mt-3 flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Đang bán</label><label><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} /> Tính thuế</label></div><button type="button" className="btn-secondary mt-3" disabled={disabled || !name.trim() || !unitLabel.trim()} onClick={() => void onSave({ name, priceCents: Math.round(Number(price) * 100), unitLabel, taxable, active })}><Save className="h-4 w-4" /> Lưu</button></div>;
+  return <div className="rounded-xl border border-stone-200 p-4"><p className="text-xs font-semibold text-emerald-700">{service.active ? 'Đang cung cấp' : 'Tạm ngưng'} · {formatMoney(service.priceCents, currency)} / {service.unitLabel}{service.freeFirstUnitMinNights ? ` · miễn phí 1 lượt khi ở từ ${service.freeFirstUnitMinNights} đêm` : ''}</p><label className="mt-2 block"><span className="field-label">Tên dịch vụ</span><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></label><div className="mt-3 grid grid-cols-2 gap-3"><label><span className="field-label">Giá (VND)</span><input className="field-input" type="number" min={0} value={price} onChange={(event) => setPrice(event.target.value)} /></label><label><span className="field-label">Đơn vị</span><input className="field-input" value={unitLabel} onChange={(event) => setUnitLabel(event.target.value)} /></label></div><label className="mt-3 block"><span className="field-label">Miễn phí 1 lượt khi ở từ (đêm)</span><input className="field-input" type="number" min={1} max={60} placeholder="Không áp dụng" value={freeNights} onChange={(event) => setFreeNights(event.target.value)} /></label><div className="mt-3 flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Đang bán</label><label><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} /> Tính thuế</label></div><button type="button" className="btn-secondary mt-3" disabled={disabled || !name.trim() || !unitLabel.trim()} onClick={() => void onSave({ name, priceCents: Math.round(Number(price) * 100), unitLabel, taxable, active, freeFirstUnitMinNights: freeNights.trim() ? Number(freeNights) : null })}><Save className="h-4 w-4" /> Lưu</button></div>;
 }

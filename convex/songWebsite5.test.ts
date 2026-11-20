@@ -197,6 +197,28 @@ describe('WEBSITE.pdf rounds 5–6 — Sóng rules', () => {
     await drain(s.t);
   });
 
+  it('staff set the free-pickup perk on a service; a recreated pickup without it is charged in full', async () => {
+    const s = await setup();
+    // Reproduces the demo bug: the flagged pickup was paused and a copy created without the perk.
+    await s.t.mutation((api as any).songHomestay.updateAddOn, { propertyId: s.property._id, addOnId: s.pickup._id, name: s.pickup.name, priceCents: s.pickup.priceCents, unitLabel: 'lượt', taxable: false, active: false });
+    const { addOnId } = await s.t.mutation((api as any).songHomestay.createAddOn, { propertyId: s.property._id, name: s.pickup.name, priceCents: 150_000_00, unitLabel: 'lượt', taxable: false });
+    const noPerk = await s.hold('2027-11-01', '2027-11-05', [{ addOnId, quantity: 1 }]);
+    expect(await s.addOnTotal(noPerk.bookingId)).toBe(150_000_00);
+    const catalog: any = await s.t.query((api as any).songHomestay.managementCatalog, { propertyId: s.property._id });
+    expect(catalog.addOns.find((a: any) => a.addOnId === addOnId).freeFirstUnitMinNights).toBeNull();
+
+    // Staff turn the perk on from the service editor: the next 4-night booking gets the pickup free.
+    await s.t.mutation((api as any).songHomestay.updateAddOn, { propertyId: s.property._id, addOnId, name: s.pickup.name, priceCents: 150_000_00, unitLabel: 'lượt', taxable: false, active: true, freeFirstUnitMinNights: 3 });
+    const withPerk = await s.hold('2027-11-10', '2027-11-14', [{ addOnId, quantity: 1 }, { addOnId: s.dropoff._id, quantity: 1 }]);
+    expect(await s.addOnTotal(withPerk.bookingId)).toBe(s.dropoff.priceCents);
+    // Saving without the field keeps the perk; null removes it; out-of-range values are refused.
+    await s.t.mutation((api as any).songHomestay.updateAddOn, { propertyId: s.property._id, addOnId, name: s.pickup.name, priceCents: 150_000_00, unitLabel: 'lượt', taxable: false, active: true });
+    expect((await s.t.run((db) => db.db.get(addOnId)))!.freeFirstUnitMinNights).toBe(3);
+    await expect(s.t.mutation((api as any).songHomestay.updateAddOn, { propertyId: s.property._id, addOnId, name: s.pickup.name, priceCents: 150_000_00, unitLabel: 'lượt', taxable: false, active: true, freeFirstUnitMinNights: 0 })).rejects.toThrow(/INVALID_ADDON|từ 1 đến 60/);
+    await s.t.mutation((api as any).songHomestay.updateAddOn, { propertyId: s.property._id, addOnId, name: s.pickup.name, priceCents: 150_000_00, unitLabel: 'lượt', taxable: false, active: true, freeFirstUnitMinNights: null });
+    expect((await s.t.run((db) => db.db.get(addOnId)))!.freeFirstUnitMinNights).toBeUndefined();
+  });
+
   it('counts infants toward max occupancy', async () => {
     const s = await setup();
     const max = s.unitType.maxOccupancy;

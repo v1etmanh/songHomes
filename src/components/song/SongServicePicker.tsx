@@ -106,10 +106,9 @@ function BikeModal({ bike, nights, currency, onClose, onAdd }: { bike: SongAddOn
   );
 }
 
-function AirportModal({ cars, nights, freeMinNights, currency, onClose, onAdd }: {
+function AirportModal({ cars, nights, currency, onClose, onAdd }: {
   cars: ReturnType<typeof songTransport>['cars'];
   nights: number;
-  freeMinNights: number | undefined;
   currency: string;
   onClose: () => void;
   onAdd: (s: ServiceSelection) => void;
@@ -119,10 +118,12 @@ function AirportModal({ cars, nights, freeMinNights, currency, onClose, onAdd }:
   const [when, setWhen] = useState('');
   const car = cars.find((c) => c.seats === seats) ?? cars[0];
   const tripInfo = TRIPS.find((t) => t.id === trip)!;
-  const pickupFree = freeMinNights !== undefined && nights >= freeMinNights && tripInfo.pickup > 0;
+  // The perk is set per add-on: only the chosen car's pickup decides (same rule as createHold).
+  const carFreeNights = car.pickup?.freeFirstUnitMinNights;
+  const pickupFree = carFreeNights !== undefined && nights >= carFreeNights && tripInfo.pickup > 0;
   const estimate = (pickupFree ? 0 : tripInfo.pickup * (car.pickup?.priceCents ?? 0)) + tripInfo.dropoff * (car.dropoff?.priceCents ?? 0);
   const note = [
-    tripInfo.pickup ? (pickupFree ? `Miễn phí chiều đón (ở từ ${freeMinNights} đêm)` : `1 lượt đón (${formatMoney(car.pickup?.priceCents ?? 0, currency)})`) : null,
+    tripInfo.pickup ? (pickupFree ? `Miễn phí chiều đón (ở từ ${carFreeNights} đêm)` : `1 lượt đón (${formatMoney(car.pickup?.priceCents ?? 0, currency)})`) : null,
     tripInfo.dropoff ? `1 lượt tiễn (${formatMoney(car.dropoff?.priceCents ?? 0, currency)})` : null,
   ].filter(Boolean).join(' + ');
   function submit(event: FormEvent) {
@@ -137,11 +138,11 @@ function AirportModal({ cars, nights, freeMinNights, currency, onClose, onAdd }:
   return (
     <Modal title="Chọn dịch vụ Đưa đón sân bay" subtitle="Sân bay Quốc tế Đà Nẵng ↔ Sóng Homestay" icon={CarFront} onClose={onClose}>
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-        {freeMinNights !== undefined ? (
-          <p className={`rounded-2xl border p-4 text-sm sm:col-span-2 ${nights >= freeMinNights ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-[#1565a8]/20 bg-[#eef4fa] text-slate-600'}`}>
-            {nights >= freeMinNights
+        {carFreeNights !== undefined ? (
+          <p className={`rounded-2xl border p-4 text-sm sm:col-span-2 ${nights >= carFreeNights ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-[#1565a8]/20 bg-[#eef4fa] text-slate-600'}`}>
+            {nights >= carFreeNights
               ? <><strong>Đơn của bạn ở {nights} đêm</strong> — được miễn phí 1 lượt đón từ sân bay Đà Nẵng về homestay.</>
-              : <>Đặt từ <strong>{freeMinNights} đêm</strong> để được miễn phí 1 lượt đón sân bay{nights ? ` (đơn hiện tại: ${nights} đêm)` : ''}.</>}
+              : <>Đặt từ <strong>{carFreeNights} đêm</strong> để được miễn phí 1 lượt đón sân bay{nights ? ` (đơn hiện tại: ${nights} đêm)` : ''}.</>}
           </p>
         ) : null}
         <label><span className={label}>Loại xe riêng</span>
@@ -238,7 +239,7 @@ export function SongServicePicker({ addOns, nights, currency, selections, onChan
         </ul>
       ) : null}
       {modal === 'bike' && bike ? <BikeModal bike={bike} nights={nights} currency={currency} onClose={() => setModal(null)} onAdd={add} /> : null}
-      {modal === 'airport' && cars.length ? <AirportModal cars={cars} nights={nights} freeMinNights={freeMinNights} currency={currency} onClose={() => setModal(null)} onAdd={add} /> : null}
+      {modal === 'airport' && cars.length ? <AirportModal cars={cars} nights={nights} currency={currency} onClose={() => setModal(null)} onAdd={add} /> : null}
     </div>
   );
 }

@@ -140,6 +140,7 @@ export const managementCatalog = query({
           taxable: row.taxable,
           active: row.active,
           sortOrder: row.sortOrder,
+          freeFirstUnitMinNights: row.freeFirstUnitMinNights ?? null,
         })),
     };
   },
@@ -426,6 +427,15 @@ export const updateUnit = mutation({
   },
 });
 
+/** Stay-length perk threshold: a whole number of nights 1–60, or undefined for none. */
+function validPerkNights(value: number | null | undefined): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 1 || value > 60) {
+    throw new ConvexError({ code: 'INVALID_ADDON', message: 'Số đêm để được miễn phí phải từ 1 đến 60.' });
+  }
+  return value;
+}
+
 export const createAddOn = mutation({
   args: {
     propertyId: v.id('properties'),
@@ -433,12 +443,15 @@ export const createAddOn = mutation({
     priceCents: v.number(),
     unitLabel: v.string(),
     taxable: v.boolean(),
+    // "Miễn phí 1 lượt khi ở từ N đêm" (null/omitted = no perk).
+    freeFirstUnitMinNights: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     await requireWrite(ctx, args.propertyId, 'song.addon.create');
     if (!args.name.trim() || !args.unitLabel.trim() || !Number.isInteger(args.priceCents) || args.priceCents < 0) {
       throw new ConvexError('INVALID_ADDON');
     }
+    const freeFirstUnitMinNights = validPerkNights(args.freeFirstUnitMinNights);
     const existing = await ctx.db
       .query('addOns')
       .withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -452,6 +465,7 @@ export const createAddOn = mutation({
       appliesTo: [],
       active: true,
       sortOrder: existing.length + 1,
+      ...(freeFirstUnitMinNights ? { freeFirstUnitMinNights } : {}),
     });
     return { addOnId };
   },
@@ -466,6 +480,8 @@ export const updateAddOn = mutation({
     unitLabel: v.string(),
     taxable: v.boolean(),
     active: v.boolean(),
+    // Omitted = keep the current perk; null = remove it.
+    freeFirstUnitMinNights: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     await requireWrite(ctx, args.propertyId, 'song.addon.update');
@@ -480,6 +496,7 @@ export const updateAddOn = mutation({
       unitLabel: args.unitLabel.trim(),
       taxable: args.taxable,
       active: args.active,
+      ...(args.freeFirstUnitMinNights !== undefined ? { freeFirstUnitMinNights: validPerkNights(args.freeFirstUnitMinNights) } : {}),
     });
     return { updated: true };
   },
