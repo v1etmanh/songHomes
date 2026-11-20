@@ -782,6 +782,28 @@ export const adminSnapshot = query({
         notes: booking.notes.filter((note) => note.by !== 'sample-data').map((note) => ({ ts: note.ts, text: note.text, by: note.by ?? '' })),
       });
     }
+    // Double bookings in the period, split by handled/open and by whether the
+    // booking was confirmed or still a request. Open = flagged and not yet
+    // acknowledged; handled = a conflictResolutions row whose overlap falls in
+    // the period. A booking cancelled to resolve a conflict is classified by
+    // the status it had before the cancellation.
+    const unconfirmed = new Set(['pending', 'hold']);
+    const conflictStats = { confirmed: { open: 0, resolved: 0 }, pending: { open: 0, resolved: 0 } };
+    for (const row of inRange) {
+      if (row.syncConflict && !row.syncConflictAcknowledgedAt) conflictStats[unconfirmed.has(row.status) ? 'pending' : 'confirmed'].open += 1;
+    }
+    const resolutions = await ctx.db
+      .query('conflictResolutions')
+      .withIndex('by_property_at', (q) => q.eq('propertyId', args.propertyId))
+      .collect();
+    for (const resolution of resolutions) {
+      if (!(resolution.overlapStart < args.endDate && resolution.overlapEnd > args.startDate)) continue;
+      const booking = await ctx.db.get(resolution.bookingId);
+      const history = booking?.statusHistory.filter((step) => step.status !== 'cancelled') ?? [];
+      const status = booking?.status === 'cancelled' ? history[history.length - 1]?.status ?? 'pending' : booking?.status ?? 'pending';
+      conflictStats[unconfirmed.has(status) ? 'pending' : 'confirmed'].resolved += 1;
+    }
+
     const periodNights = daysBetween(args.startDate, args.endDate);
     const activeUnits = units.filter(row => row.status === 'active');
     const occupancyByUnit = activeUnits.map(unit => {
@@ -799,6 +821,7 @@ export const adminSnapshot = query({
       occupancyByUnit,
       property: { name: property.name, currency: property.currency },
       canSeeRevenue,
+      conflictStats,
       newBookings,
       channelReport: {
         total: created.length,

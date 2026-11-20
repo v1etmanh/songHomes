@@ -20,6 +20,8 @@ export type Snapshot = {
   property: { name: string; currency: string };
   /** False for every role but the owner: revenue fields are then zero/empty. */
   canSeeRevenue: boolean;
+  /** Double bookings in the period: confirmed bookings vs unconfirmed requests, each split open/handled. */
+  conflictStats: { confirmed: { open: number; resolved: number }; pending: { open: number; resolved: number } };
   channelReport: { total: number; channels: Array<{ source: string; count: number }>; direct: number; directWithServices: number };
   kpis: { totalBookings: number; pendingBookings: number; confirmedBookings: number; currentGuests: number; roomRevenueCents: number; serviceRevenueCents: number; totalRevenueCents: number; occupancyPercent: number; conflictCount: number };
   bookings: BookingRow[];

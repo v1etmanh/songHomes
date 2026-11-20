@@ -103,7 +103,10 @@ describe('WEBSITE.pdf round 5 — booking rules', () => {
     });
     const before: any = await s.t.query(api.icalImport.dashboardForProperty, { propertyId: s.property._id });
     expect(before.conflicts.some((c: any) => c.conflictId === `${a}:${b}`)).toBe(true);
+    const june = { propertyId: s.property._id, startDate: '2027-06-01', endDate: '2027-07-01' };
+    expect(((await s.t.query((api as any).songHomestay.adminSnapshot, june)) as any).conflictStats).toEqual({ confirmed: { open: 1, resolved: 0 }, pending: { open: 0, resolved: 0 } });
     await s.t.mutation(api.icalImport.resolveConflict, { bookingId: b, resolutionType: 'acknowledge', note: 'Đã hủy trên Airbnb', conflictWith: a });
+    expect(((await s.t.query((api as any).songHomestay.adminSnapshot, june)) as any).conflictStats).toEqual({ confirmed: { open: 0, resolved: 1 }, pending: { open: 0, resolved: 0 } });
     const log: any[] = await s.t.query((api as any).icalImport.resolvedConflicts, { propertyId: s.property._id });
     expect(log[0]).toMatchObject({ bookingCode: 'EXT-CONF-B', otherBookingCode: 'OS-CONF-A', method: 'acknowledge', note: 'Đã hủy trên Airbnb', overlapStart: '2027-06-02', overlapEnd: '2027-06-03' });
     expect(log[0].byName).toBeTruthy();

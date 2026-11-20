@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, Bike, CalendarDays, CarFront, CircleDollarSign, Eye, FileUp, Hotel, Pencil, Plus, RefreshCw, Save, Search, Upload, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CircleDollarSign, Eye, FileUp, Hotel, Pencil, Plus, RefreshCw, Save, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -207,8 +207,11 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
       {owner ? <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">Biểu đồ doanh thu</h2><span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Booking đã xác nhận · theo ngày nhận phòng</span></div><StackedBars format={money} empty="Chưa có doanh thu trong kỳ" columns={revenueColumns(snapshot,startDate,endDate)}/><Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/></section> : null}
       <ChannelReport report={snapshot.channelReport} />
     </div>
-    <ConflictTable rows={conflicts.slice(0,6)} />
-    <ServiceEfficiency usage={snapshot.serviceUsage} money={owner ? money : null} />
+    <div className="grid items-start gap-5 xl:grid-cols-[1.45fr_1fr]">
+      <ConflictTable rows={conflicts.slice(0,6)} />
+      <ConflictChart stats={snapshot.conflictStats} />
+    </div>
+    <ServicePie usage={snapshot.serviceUsage} money={owner ? money : null} />
     </>}
   </>;
 }
@@ -238,17 +241,62 @@ function ChannelReport({ report }: { report: Snapshot['channelReport'] }) {
   </section>;
 }
 
-/** Motorbike rental and airport transfer usage among confirmed stays in the period. Tours are advice only and not counted. */
-function ServiceEfficiency({ usage, money }: { usage: Snapshot['serviceUsage']; money: ((cents: number) => string) | null }) {
-  const icons = [Bike, CarFront];
-  const total = usage.reduce((sum, row) => sum + row.revenueCents, 0);
+/**
+ * Donut of the add-on services (motorbike rental, airport transfer; tours are not counted).
+ * Slice size = number of bookings that used the service; clicking a slice or its legend row
+ * shows that service's bookings, quantity, revenue (owner only) and share.
+ */
+function ServicePie({ usage, money }: { usage: Snapshot['serviceUsage']; money: ((cents: number) => string) | null }) {
+  const colors = ['#1565a8', '#0d9488'];
+  const units = ['ngày xe', 'lượt'];
+  const rows = usage.map((row, index) => ({ ...row, color: colors[index % colors.length], unit: units[index] ?? 'lần' }));
+  const total = rows.reduce((sum, row) => sum + row.bookings, 0);
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenueCents, 0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const active = rows.find(row => row.name === picked) ?? [...rows].sort((a, b) => b.bookings - a.bookings)[0];
+  const radius = 70; const circumference = 2 * Math.PI * radius;
+  const share = (n: number) => total ? Math.round(n / total * 1000) / 10 : 0;
+  let offset = 0;
   return <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-    <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ bổ sung</h2><p className="text-xs text-slate-500">Booking đã xác nhận trong kỳ · không tính tour</p></div>{money ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Doanh thu DV: {money(total)}</span> : null}</div>
-    <div className="mt-4 grid gap-3 md:grid-cols-2">{usage.map((row, i) => { const Icon = icons[i] ?? CarFront; const unit = i === 0 ? 'ngày xe' : 'lượt'; return <div key={row.name} className="flex items-center gap-3 rounded-xl border border-slate-100 p-4">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-[#1565a8]"><Icon className="h-5 w-5"/></span>
-      <div className="min-w-0 flex-1"><p className="font-bold text-[#10234a]">{row.name}</p><p className="text-xs text-slate-500">{row.bookings} đơn đặt{row.freeUnits ? ` · ${row.freeUnits} lượt đón miễn phí (ở từ 3 đêm)` : ''}</p></div>
-      <div className="text-right"><p className="font-extrabold text-[#1565a8]">{row.units} {unit}</p>{money ? <p className="text-xs font-semibold text-slate-500">{money(row.revenueCents)}</p> : null}</div>
-    </div>; })}</div>
+    <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ bổ sung</h2><p className="text-xs text-slate-500">Booking đã xác nhận trong kỳ · không tính tour · bấm vào từng phần để xem chi tiết</p></div>{money ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Doanh thu DV: {money(totalRevenue)}</span> : null}</div>
+    <div className="mt-4 grid items-center gap-6 md:grid-cols-[auto_1fr_minmax(15rem,.9fr)]">
+      <svg viewBox="0 0 200 200" className="mx-auto h-48 w-48" role="img" aria-label="Tỷ trọng số lần đặt theo dịch vụ">
+        <circle cx="100" cy="100" r={radius} fill="none" stroke="#eef2f7" strokeWidth="34"/>
+        {total ? rows.map(row => { const length = row.bookings / total * circumference; const slice = <circle key={row.name} cx="100" cy="100" r={radius} fill="none" stroke={row.color} strokeWidth={active?.name === row.name ? 40 : 32} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} transform="rotate(-90 100 100)" className="cursor-pointer transition-[stroke-width]" onClick={() => setPicked(row.name)}><title>{`${row.name}: ${row.bookings} lần đặt (${share(row.bookings)}%)`}</title></circle>; offset += length; return row.bookings ? slice : null; }) : null}
+        <text x="100" y="96" textAnchor="middle" className="fill-[#10234a] text-[26px] font-extrabold">{total}</text>
+        <text x="100" y="118" textAnchor="middle" className="fill-slate-500 text-[11px] font-semibold">lần đặt</text>
+      </svg>
+      <ul className="space-y-1.5">{rows.map(row => <li key={row.name}><button type="button" aria-pressed={active?.name === row.name} onClick={() => setPicked(row.name)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active?.name === row.name ? 'bg-sky-50 ring-1 ring-sky-200' : 'hover:bg-slate-50'}`}><span className="h-3 w-3 shrink-0 rounded-full" style={{ background: row.color }}/><span className="min-w-0 flex-1 font-semibold text-slate-700">{row.name}</span><span className="whitespace-nowrap text-xs font-bold text-slate-500">{row.bookings} lần · {share(row.bookings)}%</span></button></li>)}</ul>
+      {active ? <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-5" aria-live="polite">
+        <p className="flex items-start gap-2 text-sm font-bold text-slate-600"><span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: active.color }}/>{active.name}</p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div><p className="text-xs font-semibold text-slate-500">Số lần đặt</p><p className="text-3xl font-extrabold text-[#10234a]">{active.bookings}</p></div>
+          <div><p className="text-xs font-semibold text-slate-500">Tỷ trọng</p><p className="text-3xl font-extrabold text-[#10234a]">{share(active.bookings)}%</p></div>
+        </div>
+        <p className="mt-4 text-xs font-semibold text-slate-500">Số lượng</p><p className="text-lg font-extrabold text-[#10234a]">{active.units} {active.unit}{active.freeUnits ? <span className="ml-2 text-xs font-semibold text-emerald-700">({active.freeUnits} lượt đón miễn phí)</span> : null}</p>
+        {money ? <><p className="mt-3 text-xs font-semibold text-slate-500">Giá trị</p><p className="whitespace-nowrap text-2xl font-extrabold text-[#1565a8]">{money(active.revenueCents)}</p><p className="text-xs text-slate-500">{totalRevenue ? Math.round(active.revenueCents / totalRevenue * 1000) / 10 : 0}% doanh thu dịch vụ</p></> : null}
+      </div> : null}
+    </div>
+    {!total ? <p className="mt-2 text-sm text-slate-400">Chưa có booking đã xác nhận dùng dịch vụ trong kỳ.</p> : null}
+  </section>;
+}
+
+/** Double bookings in the period: confirmed bookings vs unconfirmed requests, each stacked open (red) / handled (green). */
+function ConflictChart({ stats }: { stats: Snapshot['conflictStats'] }) {
+  const open = stats.confirmed.open + stats.pending.open;
+  const resolved = stats.confirmed.resolved + stats.pending.resolved;
+  const columns: Column[] = [
+    { key: 'confirmed', label: 'Đã xác nhận', segments: [{ label: 'Chưa xử lý', color: '#dc2626', value: stats.confirmed.open }, { label: 'Đã xử lý', color: '#059669', value: stats.confirmed.resolved }] },
+    { key: 'pending', label: 'Chưa xác nhận', segments: [{ label: 'Chưa xử lý', color: '#dc2626', value: stats.pending.open }, { label: 'Đã xử lý', color: '#059669', value: stats.pending.resolved }] },
+  ];
+  return <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-3"><div><h2 className="font-extrabold text-[#10234a]">Số lần trùng lịch</h2><p className="text-xs text-slate-500">Booking đã xác nhận và chưa xác nhận trong kỳ</p></div><p className="text-right text-xs text-slate-500">Tổng<br/><strong className="text-lg text-[#10234a]">{open + resolved} lần</strong></p></div>
+    <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="rounded-xl border border-red-100 bg-red-50/60 p-3"><p className="text-xs font-semibold text-slate-500">Chưa xử lý</p><p className="text-xl font-extrabold text-red-700">{open}</p></div>
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3"><p className="text-xs font-semibold text-slate-500">Đã xử lý</p><p className="text-xl font-extrabold text-emerald-700">{resolved}</p></div>
+    </div>
+    <StackedBars format={(v) => `${v} lần`} empty="Không có lần trùng lịch nào trong kỳ." columns={columns}/>
+    <Legend items={[{ label: 'Chưa xử lý', color: '#dc2626' }, { label: 'Đã xử lý', color: '#059669' }]}/>
   </section>;
 }
 
