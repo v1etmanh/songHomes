@@ -117,7 +117,7 @@ function StackedBars({ columns, format, empty }: { columns: Column[]; format: (v
   const max = Math.max(0, ...columns.map(column => column.segments.reduce((sum, s) => sum + s.value, 0)));
   if (!max) return <p className="grid h-56 place-items-center text-sm text-slate-400">{empty}</p>;
   return <div className="mt-4 flex h-64 items-end gap-2 overflow-x-auto border-b border-l border-slate-200 px-2 pt-6" onMouseLeave={() => setHovered(null)}>
-    {columns.map(column => { const total = column.segments.reduce((sum, s) => sum + s.value, 0); const isActive = active === column.key && total > 0; return <button type="button" key={column.key} aria-label={`${column.label}: ${format(total)}`} aria-pressed={pinned === column.key} onMouseEnter={() => setHovered(column.key)} onFocus={() => setHovered(column.key)} onBlur={() => setHovered(null)} onClick={() => setPinned(pinned === column.key ? null : column.key)} className="relative flex h-full min-w-12 flex-1 cursor-pointer flex-col items-center justify-end gap-1 rounded-md outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-300">
+    {columns.map(column => { const total = column.segments.reduce((sum, s) => sum + s.value, 0); const isActive = active === column.key && total > 0; return <button type="button" key={column.key} aria-label={`${column.label}: ${format(total)}`} aria-pressed={pinned === column.key} onMouseEnter={() => setHovered(column.key)} onFocus={() => setHovered(column.key)} onBlur={() => setHovered(null)} onClick={() => setPinned(pinned === column.key ? null : column.key)} className={`relative flex h-full ${columns.length > 16 ? "min-w-7" : "min-w-12"} flex-1 cursor-pointer flex-col items-center justify-end gap-1 rounded-md outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-300`}>
       {isActive ? <span role="tooltip" className="absolute bottom-full z-10 mb-1 whitespace-nowrap rounded-lg bg-[#10234a] px-2.5 py-1.5 text-left text-[11px] font-semibold leading-4 text-white shadow-lg" style={{ bottom: `${(total / max) * 190 + 22}px` }}>
         <span className="block">{column.label}: {format(total)}</span>
         {column.segments.filter(s => s.value).map(s => <span key={s.label} className="block font-normal text-white/80">{s.label}: {format(s.value)}</span>)}
@@ -142,6 +142,21 @@ function revenueColumns(snapshot: Snapshot, startDate: string, endDate: string):
   return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: [{ label: 'Phòng', color: ROOM_COLOR, value: sums.get(key)!.room }, { label: 'Dịch vụ', color: SERVICE_COLOR, value: sums.get(key)!.service }] }));
 }
 
+/** Occupied unit-nights per time bucket, one stacked segment per unit (same booking set as the occupancy KPI). */
+function occupancyColumns(snapshot: Snapshot, startDate: string, endDate: string, colorOf: (unitId: Id<'units'>) => string): Column[] {
+  const buckets = timeBuckets(startDate, endDate);
+  const units = snapshot.units.filter(u => u.status === 'active');
+  const counts = new Map(buckets.keys.map(key => [key, new Map<string, number>()]));
+  for (let day = startDate; day < endDate; day = addDays(day, 1)) {
+    const bucket = counts.get(buckets.keyOf(day));
+    if (!bucket) continue;
+    for (const unit of units) {
+      if (snapshot.bookings.some(row => row.unitId === unit._id && row.checkIn <= day && row.checkOut > day)) bucket.set(unit._id, (bucket.get(unit._id) ?? 0) + 1);
+    }
+  }
+  return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: units.map(unit => ({ label: unit.name, color: colorOf(unit._id), value: counts.get(key)!.get(unit._id) ?? 0 })) }));
+}
+
 // One colour per source, no yellow/beige (brand palette rule).
 const SOURCE_COLORS: Record<SourceLabel, string> = { 'Booking.com': '#1d4ed8', Airbnb: '#e11d48', Zalo: '#0ea5e9', Phone: '#7c3aed', Facebook: '#2563eb', Website: '#0d9488', 'Khác': '#64748b' };
 
@@ -156,6 +171,15 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
   // Only the owner sees revenue (WEBSITE.pdf r5): other roles get three cards and no revenue detail.
   const shown = owner ? metric : metric === 'revenue' ? '' : metric;
   const revenueRows = snapshot.bookings.filter(row => row.revenueRecognised).sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  const activeUnits = snapshot.units.filter(u => u.status === 'active');
+  const buckets = timeBuckets(startDate, endDate);
+  // Revenue per unit (room part in the unit's colour, services in cyan), biggest first.
+  const revenueByUnit = [...revenueRows.reduce((map, row) => {
+    const entry = map.get(row.unitId) ?? { unitId: row.unitId, name: row.unitName, total: 0, service: 0, count: 0 };
+    entry.total += row.totalCents; entry.service += row.serviceCents; entry.count += 1;
+    return map.set(row.unitId, entry);
+  }, new Map<Id<'units'>, { unitId: Id<'units'>; name: string; total: number; service: number; count: number }>()).values()].sort((a, b) => b.total - a.total);
+  const maxUnitRevenue = Math.max(1, ...revenueByUnit.map(row => row.total));
   return <>
     <div className={`grid gap-4 sm:grid-cols-2 ${owner ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
       {owner ? <KpiCard active={shown==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`${revenueRows.length} booking đã xác nhận`} tone="bg-blue-50 text-blue-600" icon={CircleDollarSign}/> : null}
@@ -163,15 +187,21 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
       <KpiCard active={shown==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận · không tính đơn hủy`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
       <KpiCard active={shown==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
     </div>
-    {/* Each KPI opens a table of the rows behind its number; the overview returns when it is closed. */}
+    {/* Revenue and occupancy open charts; new bookings and conflicts open tables. The overview returns when closed. */}
     {shown ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[shown]} · Chi tiết`}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[shown]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
       {shown==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
-       shown==='occupancy' ? <DetailTable headers={['Căn lưu trú','Đêm đã bán','Số đêm trong kỳ','Công suất']} empty="Chưa có cơ sở đang kinh doanh." rows={snapshot.units.filter(u=>u.status==='active').map(unit=>{
-         const nights=snapshot.occupancyByUnit.find(row=>row.unitId===unit._id)?.nights ?? 0;
-         const percent = periodNights ? Math.round(nights / periodNights * 100) : 0;
-         return { key: unit._id, cells: [<span key="n" className="font-semibold" style={{color:colorOf(unit._id)}}>{unit.name}</span>, nights, periodNights, <span key="p" className="inline-flex items-center gap-2"><span className="h-2 w-24 rounded-full bg-slate-100"><span className="block h-full rounded-full" style={{width:`${percent}%`,background:colorOf(unit._id)}}/></span><strong>{percent}%</strong></span>] };
-       })}/> :
+       shown==='occupancy' ? <>
+         <p className="mt-1 text-xs text-slate-500">Số căn có khách mỗi {buckets.unit === 'ngày' ? 'đêm' : buckets.unit} trong kỳ, tô màu theo căn. Rê chuột lên cột để xem chi tiết.</p>
+         <StackedBars format={(v) => `${v} đêm`} empty="Chưa có đêm nào có khách trong kỳ." columns={occupancyColumns(snapshot, startDate, endDate, colorOf)}/>
+         <Legend items={activeUnits.map(unit => ({ label: unit.name, color: colorOf(unit._id) }))}/>
+         <h3 className="mt-6 text-sm font-extrabold text-[#10234a]">Công suất từng căn</h3>
+         <div className="mt-3 space-y-3">{activeUnits.map(unit => {
+           const nights = snapshot.occupancyByUnit.find(row => row.unitId === unit._id)?.nights ?? 0;
+           const percent = periodNights ? Math.round(nights / periodNights * 100) : 0;
+           return <div key={unit._id}><div className="flex justify-between gap-3 text-sm"><span className="font-semibold" style={{color: colorOf(unit._id)}}>{unit.name}</span><span className="whitespace-nowrap"><strong>{percent}%</strong> · {nights}/{periodNights} đêm</span></div><div className="mt-1 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{width: `${percent}%`, background: colorOf(unit._id)}}/></div></div>;
+         })}</div>
+       </> :
        shown==='bookings' ? <>
          <p className="mt-1 text-xs text-slate-500">Mỗi đơn tạo trong kỳ tính 1 lần (không tính theo đêm hay số khách), mọi kênh; không tính đơn đã hủy, hết hạn hoặc khóa phòng.</p>
          <DetailTable headers={['Ngày tạo','Mã booking','Khách hàng','Chỗ nghỉ','Lưu trú','Kênh','Dịch vụ','Trạng thái']} empty="Không có booking mới trong kỳ." rows={[...snapshot.newBookings].sort((a,b)=>b.date.localeCompare(a.date)).map(row=>({ key: row.bookingId, cells: [
@@ -181,9 +211,16 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
        <>
          <div className="mt-4 grid gap-3 sm:grid-cols-3">{[['Tiền phòng',snapshot.kpis.roomRevenueCents,ROOM_COLOR],['Dịch vụ',snapshot.kpis.serviceRevenueCents,SERVICE_COLOR],['Tổng',snapshot.kpis.totalRevenueCents,'#10234a']].map(([name,value,color])=><div key={String(name)} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">{name}</p><p className="text-lg font-extrabold" style={{color:String(color)}}>{money(Number(value))}</p></div>)}</div>
          <p className="mt-2 text-xs text-slate-500">Booking được cộng vào doanh thu ngay khi đã xác nhận, theo ngày nhận phòng trong kỳ.</p>
-         <DetailTable headers={['Mã booking','Khách hàng','Chỗ nghỉ','Nhận phòng','Tiền phòng','Dịch vụ','Tổng']} empty="Chưa có booking đã xác nhận trong kỳ." rows={revenueRows.map(row=>({ key: row.bookingId, cells: [
-           <strong key="c" className="text-[#10234a]">{row.confirmationCode}</strong>, row.guestName, row.unitName, `${row.checkIn.slice(8)}/${row.checkIn.slice(5,7)}/${row.checkIn.slice(2,4)}`, money(row.totalCents-row.serviceCents), money(row.serviceCents), <strong key="t">{money(row.totalCents)}</strong>,
-         ] }))}/>
+         <StackedBars format={money} empty="Chưa có doanh thu trong kỳ." columns={revenueColumns(snapshot, startDate, endDate)}/>
+         <Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/>
+         <h3 className="mt-6 text-sm font-extrabold text-[#10234a]">Doanh thu theo căn</h3>
+         {revenueByUnit.length ? <div className="mt-3 space-y-3">{revenueByUnit.map(row => <div key={row.unitId}>
+           <div className="flex justify-between gap-3 text-sm"><span className="font-semibold" style={{color: colorOf(row.unitId)}}>{row.name}</span><span className="whitespace-nowrap"><strong className="text-[#10234a]">{money(row.total)}</strong> <span className="text-xs text-slate-400">· {row.count} booking</span></span></div>
+           <div className="mt-1 flex h-3 overflow-hidden rounded-full bg-slate-100" title={`Phòng ${money(row.total - row.service)} · Dịch vụ ${money(row.service)}`}>
+             <div style={{width: `${(row.total - row.service) / maxUnitRevenue * 100}%`, background: colorOf(row.unitId)}}/>
+             <div style={{width: `${row.service / maxUnitRevenue * 100}%`, background: SERVICE_COLOR}}/>
+           </div>
+         </div>)}</div> : <p className="mt-3 text-sm text-slate-400">Chưa có booking đã xác nhận trong kỳ.</p>}
        </>}
     </section> : <>
     <div className={`grid gap-5 ${owner ? 'xl:grid-cols-[1.25fr_1fr]' : ''}`}>
