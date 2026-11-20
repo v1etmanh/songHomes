@@ -374,6 +374,19 @@ Don't promise otherwise anywhere — docs, UI copy, commit messages.
   email verification, so an account can be opened with someone else's
   address (same exposure as the old free-text email); API-key holds for Sóng
   now fail with ACCOUNT_REQUIRED.
+- 2026-11-20 (Sóng round 5, supersedes the check-in gate above): guests
+  declare residence only once staff CONFIRMED the booking (pending/hold →
+  `BOOKING_NOT_CONFIRMED`); missing declarations no longer block check-in —
+  front desk sees "Chưa khai báo" and helps the guest. Guest email at each
+  step: `request_received` (pending), `confirmation` (staff confirms),
+  `residence_complete`. Infants count toward maxOccupancy (server-enforced).
+  Stay-length perk: add-ons with `freeFirstUnitMinNights` give ONE unit free
+  per booking (`shared/pricing.ts` `stayPerkFreeUnits`, recomputed in
+  createHold, snapshotted as `bookingAddOns.freeQuantity`); Sóng sells airport
+  pickup and drop-off separately so only the pickup leg is free from 3 nights.
+  Dashboard revenue = confirmed/checked-in/out bookings by check-in day, owner
+  role only (server returns zeros otherwise). The unit iCal export includes
+  pending requests so OTAs that pull it block those nights too.
 - 2026-09-01 (production downstream boundary): the generic operator release is
   built only with `VITE_OPENSTAYS_PROFILE=production` and a generated
   `convex-production/` functions directory. Its release artifacts must not

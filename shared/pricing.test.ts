@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  addOnLineCents,
+  billableQuantity,
   computePrice,
   computeRefundCents,
   daysBetween,
   enumerateNights,
   findSeason,
   isIsoDate,
+  stayPerkFreeUnits,
   validateStayRules,
   type RatePlanLike,
 } from './pricing';
@@ -363,5 +366,40 @@ describe('stay rules', () => {
     expect(() => validateStayRules(basePlan, future(1), future(30), tz)).toThrow(/Maximum stay/);
     expect(() => validateStayRules(basePlan, addDays(future(0), -3), future(1), tz)).toThrow(/past/);
     expect(() => validateStayRules(basePlan, future(400), future(402), tz)).toThrow(/days before arrival/);
+  });
+});
+
+describe('stay-length add-on perk (free airport pickup)', () => {
+  const pickup = { unitPriceCents: 150_000_00, quantity: 1, freeFirstUnitMinNights: 3 };
+  const dropoff = { unitPriceCents: 150_000_00, quantity: 1 };
+
+  it('frees one flagged unit only once the stay reaches the threshold', () => {
+    expect(stayPerkFreeUnits([pickup, dropoff], 2)).toEqual([0, 0]);
+    expect(stayPerkFreeUnits([pickup, dropoff], 3)).toEqual([1, 0]);
+  });
+
+  it('never frees an unflagged line (drop-off), however long the stay', () => {
+    expect(stayPerkFreeUnits([dropoff], 30)).toEqual([0]);
+  });
+
+  it('gives at most ONE free unit per booking, on the most expensive flagged line', () => {
+    const big = { unitPriceCents: 300_000_00, quantity: 2, freeFirstUnitMinNights: 3 };
+    expect(stayPerkFreeUnits([pickup, big], 5)).toEqual([0, 1]);
+  });
+
+  it('prices free units at zero and never goes negative', () => {
+    const price = computePrice({
+      ratePlan: basePlan,
+      checkIn: '2027-01-01',
+      checkOut: '2027-01-04',
+      addOns: [
+        { name: 'Đón', unitPriceCents: 150_000_00, quantity: 1, taxable: false, freeQuantity: 1 },
+        { name: 'Tiễn', unitPriceCents: 150_000_00, quantity: 1, taxable: false },
+      ],
+      taxRateBps: 0,
+    });
+    expect(price.addOnSubtotalCents).toBe(150_000_00);
+    expect(addOnLineCents({ unitPriceCents: 100, quantity: 1, freeQuantity: 5 })).toBe(0);
+    expect(billableQuantity({ quantity: 2, freeQuantity: -3 })).toBe(2);
   });
 });

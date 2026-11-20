@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, CalendarDays, CircleDollarSign, Eye, FileUp, Hotel, Pencil, Plus, RefreshCw, Save, Search, Upload, X } from 'lucide-react';
+import { AlertTriangle, Bike, CalendarDays, CarFront, CircleDollarSign, Eye, FileUp, Hotel, Pencil, Plus, RefreshCw, Save, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -18,7 +18,7 @@ import { addMonths, startOfMonth, startOfWeek, startOfYear } from 'date-fns';
 import { todayIso, dateToIso, isoToDate, daysBetween, isIsoDate } from '../lib/dates';
 import { formatMoney } from '../lib/money';
 import type { BookingRow, Snapshot } from '../lib/songAdminTypes';
-import { CALENDAR_STATUS_FILTERS, SOURCE_LABELS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, managementStatus, shortDateTime, sourceLabel, stayRange, type CalendarStatus, type ManagementStatus, type SourceLabel } from '../lib/songBookingStatus';
+import { SOURCE_LABELS, STATUS_LABELS, MANAGEMENT_STATUSES, calendarStatus, managementStatus, shortDateTime, sourceLabel, stayRange, type CalendarStatus, type ManagementStatus, type SourceLabel } from '../lib/songBookingStatus';
 
 export type SongAdminSection = 'dashboard'|'accommodations'|'bookings'|'calendar'|'ical'|'services'|'conflicts'|'residence';
 
@@ -64,7 +64,7 @@ export function SongAdminPage({ section }: { section: SongAdminSection }) {
   // Owners and managers keep the analytics dashboard and switch to the front-desk view from the top bar; front desk always lands on the shift.
   const canSwitchView = section === 'dashboard' && ['owner', 'manager'].includes(property.role);
   const deskView = section === 'dashboard' && (property.role === 'front_desk' || (canSwitchView && params.get('view') === 'desk'));
-  const title = deskView ? 'Công việc vận hành trong ca' : SECTION_TITLES[section];
+  const title = deskView ? `Công việc vận hành ca ngày ${today.slice(8)}/${today.slice(5,7)}/${today.slice(0,4)}` : SECTION_TITLES[section];
   if (property.slug !== 'song-homestay') return <div className="card p-8"><h1 className="text-xl font-semibold">Màn hình dành riêng cho Sóng Homestay</h1><p className="mt-2 text-stone-600">Hãy chọn property Sóng Homestay ở thanh trên cùng.</p></div>;
   return <div className="space-y-6">
     <div className="flex min-h-11 flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-extrabold text-[#10234a]">{title}</h1>{filtered && !deskView && <PeriodFilter periods={allowedPeriods} selected={selected} anchor={anchor} customStart={customStart} customEnd={customEnd} today={today} update={update}/>}</div>
@@ -144,88 +144,94 @@ function revenueColumns(snapshot: Snapshot, startDate: string, endDate: string):
 
 // One colour per source, no yellow/beige (brand palette rule).
 const SOURCE_COLORS: Record<SourceLabel, string> = { 'Booking.com': '#1d4ed8', Airbnb: '#e11d48', Zalo: '#0ea5e9', Phone: '#7c3aed', Facebook: '#2563eb', Website: '#0d9488', 'Khác': '#64748b' };
-// Four distinct hues for the four services on sale.
-const SERVICE_COLORS = ['#1565a8', '#0d9488', '#7c3aed', '#e11d48'];
 
 function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:Snapshot; metric:string; setMetric:(metric:string)=>void; startDate:string; endDate:string}) {
   const currency = snapshot.property.currency;
   const money = (cents: number) => formatMoney(cents, currency);
   const colorOf = (unitId: Id<'units'>) => unitColors[Math.max(0, snapshot.units.findIndex(u => u._id === unitId)) % unitColors.length];
-  const unitLegend = snapshot.units.map(unit => ({ label: unit.name, color: colorOf(unit._id) }));
-  const buckets = timeBuckets(startDate, endDate);
   const toggle = (key: string) => setMetric(metric === key ? '' : key);
   const periodNights = daysBetween(startDate, endDate);
-  // Stored sources ("ical:Booking.com", "manual:zalo", "online"…) fold into the seven labels staff use.
-  const sourceTotals = new Map<SourceLabel, number>(SOURCE_LABELS.map(label => [label, 0]));
-  for (const row of snapshot.sourceCounts) { const label = sourceLabel(row.source); sourceTotals.set(label, (sourceTotals.get(label) ?? 0) + row.count); }
-  const totalSources = [...sourceTotals.values()].reduce((sum, n) => sum + n, 0) || 1;
   const conflicts = snapshot.bookings.filter((row)=>row.syncConflict);
+  const owner = snapshot.canSeeRevenue;
+  // Only the owner sees revenue (WEBSITE.pdf r5): other roles get three cards and no revenue detail.
+  const shown = owner ? metric : metric === 'revenue' ? '' : metric;
+  const revenueRows = snapshot.bookings.filter(row => row.revenueRecognised).sort((a, b) => a.checkIn.localeCompare(b.checkIn));
   return <>
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard active={metric==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`Phòng ${money(snapshot.kpis.roomRevenueCents)} · tính đến hôm nay`} tone="bg-blue-50 text-blue-600" icon={CircleDollarSign}/>
-      <KpiCard active={metric==='occupancy'} onClick={()=>toggle('occupancy')} label={METRICS.occupancy} value={`${snapshot.kpis.occupancyPercent}%`} detail={`${snapshot.units.length} cơ sở đang theo dõi`} tone="bg-teal-50 text-teal-600" icon={Hotel}/>
-      <KpiCard active={metric==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
-      <KpiCard active={metric==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
+    <div className={`grid gap-4 sm:grid-cols-2 ${owner ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+      {owner ? <KpiCard active={shown==='revenue'} onClick={()=>toggle('revenue')} label={METRICS.revenue} value={money(snapshot.kpis.totalRevenueCents)} detail={`${revenueRows.length} booking đã xác nhận`} tone="bg-blue-50 text-blue-600" icon={CircleDollarSign}/> : null}
+      <KpiCard active={shown==='occupancy'} onClick={()=>toggle('occupancy')} label={METRICS.occupancy} value={`${snapshot.kpis.occupancyPercent}%`} detail={`${snapshot.units.filter(u=>u.status==='active').length} cơ sở đang theo dõi`} tone="bg-teal-50 text-teal-600" icon={Hotel}/>
+      <KpiCard active={shown==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận · không tính đơn hủy`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
+      <KpiCard active={shown==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
     </div>
-    {/* An open KPI shows only its own detail; the general sections come back when it is closed. */}
-    {metric ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[metric]} · Chi tiết`}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[metric]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
-      {metric==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
-       metric==='occupancy' ? <div className="mt-4 space-y-3">{snapshot.units.filter(u=>u.status==='active').map(unit=>{
+    {/* Each KPI opens a table of the rows behind its number; the overview returns when it is closed. */}
+    {shown ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[shown]} · Chi tiết`}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[shown]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
+      {shown==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
+       shown==='occupancy' ? <DetailTable headers={['Căn lưu trú','Đêm đã bán','Số đêm trong kỳ','Công suất']} empty="Chưa có cơ sở đang kinh doanh." rows={snapshot.units.filter(u=>u.status==='active').map(unit=>{
          const nights=snapshot.occupancyByUnit.find(row=>row.unitId===unit._id)?.nights ?? 0;
          const percent = periodNights ? Math.round(nights / periodNights * 100) : 0;
-         return <div key={unit._id}><div className="flex justify-between gap-3 text-sm"><span className="font-semibold" style={{color:colorOf(unit._id)}}>{unit.name}</span><span className="whitespace-nowrap"><strong>{percent}%</strong> · {nights}/{periodNights} đêm</span></div><div className="mt-1 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${percent}%`,background:colorOf(unit._id)}}/></div></div>;
-       })}</div> :
-       metric==='bookings' ? <>
-         <p className="mt-1 text-xs text-slate-500">Số booking mới theo {buckets.unit} (ngày tạo), tách màu theo căn.</p>
-         <StackedBars format={String} empty="Không có booking mới trong kỳ." columns={buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: snapshot.units.map(unit => ({ label: unit.name, color: colorOf(unit._id), value: snapshot.newBookings.filter(b => b.unitId === unit._id && buckets.keyOf(b.date) === key).length })) }))}/>
-         <Legend items={unitLegend}/>
+         return { key: unit._id, cells: [<span key="n" className="font-semibold" style={{color:colorOf(unit._id)}}>{unit.name}</span>, nights, periodNights, <span key="p" className="inline-flex items-center gap-2"><span className="h-2 w-24 rounded-full bg-slate-100"><span className="block h-full rounded-full" style={{width:`${percent}%`,background:colorOf(unit._id)}}/></span><strong>{percent}%</strong></span>] };
+       })}/> :
+       shown==='bookings' ? <>
+         <p className="mt-1 text-xs text-slate-500">Mỗi đơn tạo trong kỳ tính 1 lần (không tính theo đêm hay số khách), mọi kênh; không tính đơn đã hủy, hết hạn hoặc khóa phòng.</p>
+         <DetailTable headers={['Ngày tạo','Mã booking','Khách hàng','Chỗ nghỉ','Lưu trú','Kênh','Dịch vụ','Trạng thái']} empty="Không có booking mới trong kỳ." rows={[...snapshot.newBookings].sort((a,b)=>b.date.localeCompare(a.date)).map(row=>({ key: row.bookingId, cells: [
+           `${row.date.slice(8)}/${row.date.slice(5,7)}`, <strong key="c" className="text-[#10234a]">{row.code}</strong>, row.guestName, row.unitName, stayRange(row.checkIn,row.checkOut), sourceLabel(row.source), row.hasServices ? 'Có' : '—', STATUS_LABELS[managementStatus(row)] ?? row.status,
+         ] }))}/>
        </> :
        <>
          <div className="mt-4 grid gap-3 sm:grid-cols-3">{[['Tiền phòng',snapshot.kpis.roomRevenueCents,ROOM_COLOR],['Dịch vụ',snapshot.kpis.serviceRevenueCents,SERVICE_COLOR],['Tổng',snapshot.kpis.totalRevenueCents,'#10234a']].map(([name,value,color])=><div key={String(name)} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">{name}</p><p className="text-lg font-extrabold" style={{color:String(color)}}>{money(Number(value))}</p></div>)}</div>
-         <p className="mt-2 text-xs text-slate-500">Chỉ ghi nhận các booking đã đến ngày nhận phòng (tính đến hôm nay).</p>
-         <StackedBars format={money} empty="Chưa có doanh thu trong kỳ." columns={revenueColumns(snapshot,startDate,endDate)}/>
-         <Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/>
+         <p className="mt-2 text-xs text-slate-500">Booking được cộng vào doanh thu ngay khi đã xác nhận, theo ngày nhận phòng trong kỳ.</p>
+         <DetailTable headers={['Mã booking','Khách hàng','Chỗ nghỉ','Nhận phòng','Tiền phòng','Dịch vụ','Tổng']} empty="Chưa có booking đã xác nhận trong kỳ." rows={revenueRows.map(row=>({ key: row.bookingId, cells: [
+           <strong key="c" className="text-[#10234a]">{row.confirmationCode}</strong>, row.guestName, row.unitName, `${row.checkIn.slice(8)}/${row.checkIn.slice(5,7)}/${row.checkIn.slice(2,4)}`, money(row.totalCents-row.serviceCents), money(row.serviceCents), <strong key="t">{money(row.totalCents)}</strong>,
+         ] }))}/>
        </>}
     </section> : <>
-    <div className="grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
-      <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">Biểu đồ doanh thu</h2><span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Theo ngày nhận phòng · mỗi cột 1 {buckets.unit}</span></div><StackedBars format={money} empty="Chưa có doanh thu trong kỳ" columns={revenueColumns(snapshot,startDate,endDate)}/><Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/></section>
-      <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><h2 className="font-extrabold text-[#10234a]">Nguồn booking</h2><div className="mt-5 space-y-3.5">{SOURCE_LABELS.map(label=>{ const count = sourceTotals.get(label) ?? 0; const percent = Math.round(count/totalSources*100); return <div key={label}><div className="flex justify-between text-sm"><span className="font-semibold text-slate-600">{label}</span><span className="whitespace-nowrap"><strong className="text-[#10234a]">{percent}%</strong> <span className="text-xs text-slate-400">· {count}</span></span></div><div className="mt-1.5 h-2 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${count/totalSources*100}%`,background:SOURCE_COLORS[label]}}/></div></div>; })}</div></section>
+    <div className={`grid gap-5 ${owner ? 'xl:grid-cols-[1.25fr_1fr]' : ''}`}>
+      {owner ? <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">Biểu đồ doanh thu</h2><span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Booking đã xác nhận · theo ngày nhận phòng</span></div><StackedBars format={money} empty="Chưa có doanh thu trong kỳ" columns={revenueColumns(snapshot,startDate,endDate)}/><Legend items={[{label:'Phòng',color:ROOM_COLOR},{label:'Dịch vụ',color:SERVICE_COLOR}]}/></section> : null}
+      <ChannelReport report={snapshot.channelReport} />
     </div>
     <ConflictTable rows={conflicts.slice(0,6)} />
-    <ServicePie usage={snapshot.serviceUsage} money={money} />
+    <ServiceEfficiency usage={snapshot.serviceUsage} money={owner ? money : null} />
     </>}
   </>;
 }
 
-/** Donut of the four services on sale. Clicking a slice (or its legend row) shows its bookings and revenue in large figures. */
-function ServicePie({ usage, money }: { usage: Snapshot['serviceUsage']; money: (cents: number) => string }) {
-  const rows = usage.slice(0, 4).map((row, index) => ({ ...row, color: SERVICE_COLORS[index % SERVICE_COLORS.length] }));
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  const [picked, setPicked] = useState<string | null>(null);
-  const active = rows.find(row => row.name === picked) ?? [...rows].sort((a, b) => b.count - a.count)[0];
-  const radius = 70; const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+/** Plain white table used by every KPI detail. Cells never wrap except the stay name. */
+function DetailTable({ headers, rows, empty }: { headers: string[]; rows: Array<{ key: string; cells: React.ReactNode[] }>; empty: string }) {
+  return <div className="mt-4 overflow-x-auto rounded-xl border border-sky-100"><table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+    <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{headers.map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
+    <tbody>{rows.map(row=><tr key={row.key} className="border-t border-slate-100">{row.cells.map((cell,i)=><td key={i} className="p-3">{cell}</td>)}</tr>)}
+      {!rows.length ? <tr><td colSpan={headers.length} className="p-8 text-center text-slate-400">{empty}</td></tr> : null}</tbody>
+  </table></div>;
+}
+
+/** Bookings per channel for bookings created in the period, the direct-website share, and how many direct bookers added a service. */
+function ChannelReport({ report }: { report: Snapshot['channelReport'] }) {
+  const totals = new Map<SourceLabel, number>(SOURCE_LABELS.map(label => [label, 0]));
+  for (const row of report.channels) { const label = sourceLabel(row.source); totals.set(label, (totals.get(label) ?? 0) + row.count); }
+  const total = report.total || 1;
+  const pct = (n: number, of: number) => of ? `${Math.round(n / of * 1000) / 10}%` : '0%';
+  return <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-3"><div><h2 className="font-extrabold text-[#10234a]">Báo cáo booking theo kênh</h2><p className="text-xs text-slate-500">Booking tạo trong kỳ theo kênh đặt</p></div><p className="text-right text-xs text-slate-500">Tổng booking<br/><strong className="text-lg text-[#10234a]">{report.total} đơn</strong></p></div>
+    <div className="mt-4 space-y-3">{SOURCE_LABELS.filter(label => (totals.get(label) ?? 0) > 0 || label === 'Website').map(label=>{ const count = totals.get(label) ?? 0; return <div key={label}><div className="flex justify-between text-sm"><span className="font-semibold text-slate-600">{label === 'Website' ? 'Website trực tiếp (Sóng Homestay)' : label}</span><span className="whitespace-nowrap"><strong className="text-[#10234a]">{count} đơn</strong> <span className="text-xs text-slate-400">({pct(count, report.total)})</span></span></div><div className="mt-1.5 h-2 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:`${count/total*100}%`,background:SOURCE_COLORS[label]}}/></div></div>; })}</div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-3"><p className="text-xs font-semibold text-slate-500">Đặt trực tiếp Website</p><p className="text-lg font-extrabold text-[#1565a8]">{report.direct} đơn ({pct(report.direct, report.total)})</p></div>
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><p className="text-xs font-semibold text-slate-500">Khách Website dùng dịch vụ bổ sung</p><p className="text-lg font-extrabold text-emerald-700">{report.directWithServices} đơn ({pct(report.directWithServices, report.direct)})</p></div>
+    </div>
+  </section>;
+}
+
+/** Motorbike rental and airport transfer usage among confirmed stays in the period. Tours are advice only and not counted. */
+function ServiceEfficiency({ usage, money }: { usage: Snapshot['serviceUsage']; money: ((cents: number) => string) | null }) {
+  const icons = [Bike, CarFront];
+  const total = usage.reduce((sum, row) => sum + row.revenueCents, 0);
   return <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-    <h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ</h2>
-    {!rows.length ? <p className="mt-4 text-sm text-slate-400">Chưa có dịch vụ đang bán.</p> :
-    <div className="mt-4 grid items-center gap-6 md:grid-cols-[auto_1fr_minmax(14rem,.8fr)]">
-      <svg viewBox="0 0 200 200" className="mx-auto h-48 w-48" role="img" aria-label="Tỷ trọng số lần đặt theo dịch vụ">
-        <circle cx="100" cy="100" r={radius} fill="none" stroke="#eef2f7" strokeWidth="34"/>
-        {total ? rows.map(row => { const length = row.count / total * circumference; const dash = <circle key={row.name} cx="100" cy="100" r={radius} fill="none" stroke={row.color} strokeWidth={active?.name === row.name ? 40 : 32} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} transform="rotate(-90 100 100)" className="cursor-pointer transition-[stroke-width]" onClick={() => setPicked(row.name)}><title>{`${row.name}: ${row.count} lần`}</title></circle>; offset += length; return row.count ? dash : null; }) : null}
-        <text x="100" y="96" textAnchor="middle" className="fill-[#10234a] text-[26px] font-extrabold">{total}</text>
-        <text x="100" y="118" textAnchor="middle" className="fill-slate-500 text-[11px] font-semibold">lần đặt</text>
-      </svg>
-      <ul className="space-y-1.5">{rows.map(row => <li key={row.name}><button type="button" aria-pressed={active?.name === row.name} onClick={() => setPicked(row.name)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active?.name === row.name ? 'bg-sky-50 ring-1 ring-sky-200' : 'hover:bg-slate-50'}`}><span className="h-3 w-3 shrink-0 rounded-full" style={{ background: row.color }}/><span className="min-w-0 flex-1 font-semibold text-slate-700">{row.name}</span><span className="whitespace-nowrap text-xs font-bold text-slate-500">{total ? Math.round(row.count / total * 100) : 0}%</span></button></li>)}</ul>
-      {active ? <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-5" aria-live="polite">
-        <p className="flex items-start gap-2 text-sm font-bold text-slate-600"><span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: active.color }}/>{active.name}</p>
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div><p className="text-xs font-semibold text-slate-500">Số lần đặt</p><p className="text-3xl font-extrabold text-[#10234a]">{active.count}</p></div>
-          <div><p className="text-xs font-semibold text-slate-500">Tỷ trọng</p><p className="text-3xl font-extrabold text-[#10234a]">{total ? Math.round(active.count / total * 100) : 0}%</p></div>
-        </div>
-        <p className="mt-4 text-xs font-semibold text-slate-500">Doanh thu</p><p className="whitespace-nowrap text-2xl font-extrabold text-[#1565a8]">{money(active.revenueCents)}</p>
-      </div> : null}
-    </div>}
+    <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-extrabold text-[#10234a]">Hiệu quả dịch vụ bổ sung</h2><p className="text-xs text-slate-500">Booking đã xác nhận trong kỳ · không tính tour</p></div>{money ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Doanh thu DV: {money(total)}</span> : null}</div>
+    <div className="mt-4 grid gap-3 md:grid-cols-2">{usage.map((row, i) => { const Icon = icons[i] ?? CarFront; const unit = i === 0 ? 'ngày xe' : 'lượt'; return <div key={row.name} className="flex items-center gap-3 rounded-xl border border-slate-100 p-4">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-[#1565a8]"><Icon className="h-5 w-5"/></span>
+      <div className="min-w-0 flex-1"><p className="font-bold text-[#10234a]">{row.name}</p><p className="text-xs text-slate-500">{row.bookings} đơn đặt{row.freeUnits ? ` · ${row.freeUnits} lượt đón miễn phí (ở từ 3 đêm)` : ''}</p></div>
+      <div className="text-right"><p className="font-extrabold text-[#1565a8]">{row.units} {unit}</p>{money ? <p className="text-xs font-semibold text-slate-500">{money(row.revenueCents)}</p> : null}</div>
+    </div>; })}</div>
   </section>;
 }
 
@@ -710,14 +716,14 @@ function CreateBookingDialog({propertyId,close,onCreated}:{propertyId:Id<'proper
 const unitColors = ['#1d4ed8','#7e22ce','#047857','#b45309','#be185d','#0e7490','#dc2626','#65a30d','#4338ca','#a16207'];
 // A blocked night draws like any occupied night: the grey "Khóa phòng" colour and legend entry are gone.
 const statusColors: Record<CalendarStatus,string> = {pending:'#e11d48',confirmed:'#1d4ed8',completed:'#6d28d9',cancelled:'#991b1b',blocked:'#1d4ed8'};
-const barLabel = (row: BookingRow) => row.status === 'external' ? sourceLabel(row.source) : row.guestName;
+// Bars show the guest's name; an OTA import without a name falls back to its channel.
+const barLabel = (row: BookingRow) => row.guestName && row.guestName !== 'Khách OTA' ? row.guestName : sourceLabel(row.source);
+/** Confirmed stays (incl. OTA imports, which arrive confirmed); pending requests, cancellations and blocks are not drawn. */
+const CALENDAR_STATUSES = new Set(['confirmed', 'checked_in', 'checked_out', 'external']);
 
 type Popover = { booking: BookingRow; x: number; y: number };
 
 function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:string;endDate:string}) {
-  const [params,setParams]=useSearchParams();
-  const rawStatus=params.get('status') ?? '';
-  const status=(CALENDAR_STATUS_FILTERS as string[]).includes(rawStatus) ? rawStatus : '';
   const [popover,setPopover]=useState<Popover|null>(null);
   const popoverRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{
@@ -731,17 +737,17 @@ function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:stri
   const windowEnd=addDays(days[days.length-1],1);
   const {property}=useAdminProperty();
   const today=todayIso(property.timezone);
-  const rows=snapshot.bookings.filter(row=>row.status!=='cancelled' && (!status || calendarStatus(row,today)===status) && row.checkIn<windowEnd && row.checkOut>days[0]);
-  const colorFor=(row:BookingRow)=>statusColors[calendarStatus(row,today)];
+  // Only confirmed stays are drawn (WEBSITE.pdf r5); each bar takes its unit's colour, like the unit name.
+  const rows=snapshot.bookings.filter(row=>CALENDAR_STATUSES.has(row.status) && row.checkIn<windowEnd && row.checkOut>days[0]);
+  const unitIndex=new Map(snapshot.units.map((unit,i)=>[unit._id,i]));
+  const colorFor=(row:BookingRow)=>unitColors[(unitIndex.get(row.unitId) ?? 0)%unitColors.length];
   const columns=`repeat(${days.length}, minmax(${days.length<=7?'7rem':'3.5rem'}, 1fr))`;
   function open(event:ReactMouseEvent,booking:BookingRow){
     const width=288; const x=Math.min(event.clientX, window.innerWidth-width-16); const y=Math.min(event.clientY+12, window.innerHeight-260);
     setPopover({booking,x:Math.max(16,x),y:Math.max(16,y)});
   }
   return <section className="card overflow-hidden p-4">
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-3 text-xs font-semibold">{CALENDAR_STATUS_FILTERS.map(s=>[s,statusColors[s]] as const).map(([s,color])=><button type="button" key={s} onClick={()=>setParams(prev=>{const next=new URLSearchParams(prev); if(status===s) next.delete('status'); else next.set('status',s); return next;},{replace:true})} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${status===s?'ring-2 ring-offset-1':''}`} style={{color}}><span className="h-2.5 w-2.5 rounded-sm" style={{background:color}}/>{STATUS_LABELS[s]}</button>)}</div>
-    <select aria-label="Trạng thái booking" className="field-input w-auto" value={status} onChange={e=>setParams(prev=>{const next=new URLSearchParams(prev); if(e.target.value) next.set('status',e.target.value); else next.delete('status'); return next;},{replace:true})}>
-      <option value="">Mọi trạng thái</option>{CALENDAR_STATUS_FILTERS.map(s=><option value={s} key={s}>{STATUS_LABELS[s]}</option>)}</select></div>
+    <div className="mb-3 flex flex-wrap items-center gap-3 text-xs font-semibold"><span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[#1565a8]"><span className="h-2.5 w-2.5 rounded-sm bg-[#1565a8]"/>Đã xác nhận ({rows.length})</span><span className="text-slate-500">Màu booking trùng màu tên từng căn homestay</span></div>
     <div className="overflow-x-auto"><div className="min-w-fit text-xs">
       <div className="flex border-b"><div className="w-36 shrink-0 p-2 font-bold">Căn lưu trú</div><div className="grid flex-1" style={{gridTemplateColumns:columns}}>{days.map(day=><div key={day} className={`border-l p-2 text-center font-semibold ${day===today?'bg-blue-50 text-blue-700':''}`}>{day.slice(8)}/{day.slice(5,7)}</div>)}</div></div>
       {snapshot.units.map((unit,i)=>{
@@ -753,7 +759,7 @@ function Calendar({snapshot,startDate,endDate}:{snapshot:Snapshot;startDate:stri
         return <div key={unit._id} className="flex border-b"><div className="w-36 shrink-0 p-2 font-bold" style={{color:unitColors[i%unitColors.length]}}>{unit.name}</div>
           <div className="grid flex-1 py-1" style={{gridTemplateColumns:columns,gridTemplateRows:`repeat(${lanes}, 2rem)`}}>
             {days.map((day,d)=><div key={day} className={`border-l ${day===today?'bg-blue-50/60':''}`} style={{gridColumn:`${d+1}`,gridRow:`1 / span ${lanes}`}}/>)}
-            {placed.map(({row,start,end,lane})=><button type="button" key={row.bookingId} onClick={e=>open(e,row)} title={`${barLabel(row)} · ${STATUS_LABELS[calendarStatus(row,today)]}`}
+            {placed.map(({row,start,end,lane})=><button type="button" key={row.bookingId} onClick={e=>open(e,row)} title={`${barLabel(row)} · ${row.confirmationCode} · ${stayRange(row.checkIn,row.checkOut)}`}
               className={`z-10 mx-0.5 my-0.5 truncate px-2 text-left font-semibold text-white shadow-sm hover:brightness-110 ${row.checkIn<days[0]?'':'rounded-l'} ${row.checkOut>windowEnd?'':'rounded-r'} ${row.syncConflict?'ring-2 ring-red-500':''}`}
               style={{gridColumn:`${start+1} / ${Math.max(start+1,end)+1}`,gridRow:`${lane+1}`,background:colorFor(row)}}>{barLabel(row)}</button>)}
           </div></div>;

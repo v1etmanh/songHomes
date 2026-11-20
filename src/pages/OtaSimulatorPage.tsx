@@ -161,6 +161,8 @@ type ListingView = {
   unitSlug: string;
   photoUrl: string | null;
   feedUrl: string;
+  openStaysFeedUrl: string;
+  fromOpenStays: Array<{ checkIn: string; checkOut: string; code: string }>;
   reservations: Array<{ reservationId: Id<'otaSimReservations'>; uid: string; checkIn: string; checkOut: string; guestLabel: string; status: 'active' | 'cancelled'; origin: string }>;
 };
 
@@ -218,15 +220,21 @@ function ListingCard({ listing, today, platform, focused }: { listing: ListingVi
             <div className="grid min-w-[40rem] grid-cols-[repeat(30,minmax(0,1fr))] gap-0.5">
               {days.map((day) => {
                 const booked = active.find((r) => r.checkIn <= day && r.checkOut > day);
+                const blocked = !booked && listing.fromOpenStays.find((b) => b.checkIn <= day && b.checkOut > day);
                 return (
-                  <div key={day} title={booked ? `${booked.guestLabel} · ${booked.checkIn} → ${booked.checkOut}` : `${day} trống`} className="text-center">
-                    <div className={`h-7 rounded ${booked ? theme.bar : 'bg-slate-100'}`} />
+                  <div key={day} title={booked ? `${booked.guestLabel} · ${booked.checkIn} → ${booked.checkOut}` : blocked ? `Không còn trống · nhập từ OpenStays (${blocked.code})` : `${day} trống`} className="text-center">
+                    <div className={`h-7 rounded ${booked ? theme.bar : blocked ? 'bg-slate-400 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]' : 'bg-slate-100'}`} />
                     <span className="text-[10px] text-slate-500">{day.slice(8)}</span>
                   </div>
                 );
               })}
             </div>
           </div>
+
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-slate-400" />Không còn trống — {listing.fromOpenStays.length} booking nhập từ link iCal của OpenStays</span>
+            <button type="button" className="font-semibold text-slate-600 underline" onClick={() => void navigator.clipboard?.writeText(listing.openStaysFeedUrl)}>Copy link iCal nhập</button>
+          </p>
 
           <ul className="mt-4 space-y-2">
             {listing.reservations.map((r) => (

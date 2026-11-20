@@ -1,40 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation } from 'convex/react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Bike,
-  CarFront,
-  Check,
-  ClipboardList,
-  Landmark,
-  MessageCircle,
-  Mountain,
-  Plus,
-  Sailboat,
-  Sparkles,
-  Trash2,
-  Waves,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
-import { api } from '../../convex/_generated/api';
-import { extractErrorMessage } from '../components/ErrorMessage';
+import { Landmark, MessageCircle, Mountain, Sailboat, Sparkles, Waves, type LucideIcon } from 'lucide-react';
 import { chatWithSong } from '../lib/songLinks';
 
 const vnd = (amount: number) => `${amount.toLocaleString('vi-VN')}đ`;
 
 const BIKE_PRICE = 150_000;
-const BIKE_MODELS = ['Honda Vision', 'Honda Air Blade', 'Honda Lead 125'];
 const CARS = [
   { id: '7', label: 'Xe 7 chỗ', price: 150_000 },
   { id: '16', label: 'Xe 16 chỗ', price: 300_000 },
 ] as const;
-const TRIPS = [
-  { id: 'pickup', label: 'Chỉ đón sân bay (1 lượt)', pickups: 1, dropoffs: 0 },
-  { id: 'dropoff', label: 'Chỉ tiễn ra sân bay (1 lượt)', pickups: 0, dropoffs: 1 },
-  { id: 'round', label: 'Khứ hồi (Đón + Tiễn)', pickups: 1, dropoffs: 1 },
-] as const;
-
 /** Tours are arranged over chat: dates, group size and pickup vary too much for a fixed price. */
 const TOURS: Array<{ name: string; tag: string; text: string; icon: LucideIcon; tone: string; image: string; alt: string }> = [
   { name: 'Bà Nà Hills - Đường lên tiên cảnh', tag: '1 ngày • Đón tận nơi', icon: Mountain, tone: 'from-[#0b2e4f] to-[#1565a8]', image: '/song-homestay/experiences/ba-na.webp', alt: 'Cầu Vàng với đôi bàn tay khổng lồ giữa núi rừng Bà Nà Hills lúc hoàng hôn',
@@ -47,182 +22,8 @@ const TOURS: Array<{ name: string; tag: string; text: string; icon: LucideIcon; 
     text: 'Thả đèn hoa đăng trên sông Hoài, dạo phố cổ đèn lồng lung linh và thưởng thức màn trình diễn nghệ thuật thực cảnh ngoài trời quy mô lớn nhất Việt Nam.' },
 ];
 
-type Selection = { id: string; title: string; detail: string; estimate: number };
-
-const STORAGE_KEY = 'song-selected-services';
-
-function loadSelections(): Selection[] {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Selection[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function Modal({ title, subtitle, icon: Icon, onClose, children }: { title: string; subtitle: string; icon: LucideIcon; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    ref.current?.showModal();
-  }, []);
-  return (
-    <dialog ref={ref} onCancel={onClose} aria-labelledby="service-modal-title" className="w-[min(94vw,34rem)] overflow-hidden rounded-3xl p-0 shadow-2xl backdrop:bg-[#082c4f]/60">
-      <div className="flex items-start gap-3 bg-[#eef4fa] px-6 py-5">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-[#1565a8]"><Icon className="h-5 w-5" aria-hidden="true" /></span>
-        <div className="flex-1">
-          <h2 id="service-modal-title" className="font-accent text-2xl text-[#0b2e4f]">{title}</h2>
-          <p className="text-sm text-slate-500">{subtitle}</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-full p-1 text-slate-500 hover:bg-white"><X className="h-5 w-5" /></button>
-      </div>
-      <div className="px-6 py-5">{children}</div>
-    </dialog>
-  );
-}
-
-function ModalActions({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="mt-6 flex justify-end gap-2">
-      <button type="button" className="btn-secondary" onClick={onClose}>Hủy</button>
-      <button type="submit" className="btn-primary"><Check className="h-4 w-4" aria-hidden="true" /> Thêm vào danh sách</button>
-    </div>
-  );
-}
-
-const label = 'mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-slate-500';
-
-function BikeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (selection: Selection) => void }) {
-  const [model, setModel] = useState(BIKE_MODELS[0]);
-  const [bikes, setBikes] = useState(1);
-  const [days, setDays] = useState(2);
-  const [pickup, setPickup] = useState('08:30 sáng ngày nhận phòng');
-  const estimate = BIKE_PRICE * bikes * days;
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onAdd({ id: `bike-${Date.now()}`, title: 'Thuê xe máy', detail: `${model} · ${bikes} xe × ${days} ngày · nhận xe ${pickup}`, estimate });
-  }
-  return (
-    <Modal title="Chọn dịch vụ Thuê xe máy" subtitle="Giao xe tận homestay • Kèm 2 mũ bảo hiểm & áo mưa" icon={Bike} onClose={onClose}>
-      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-        <label className="sm:col-span-2"><span className={label}>Chọn dòng xe tay ga (đồng giá {vnd(BIKE_PRICE)} / ngày)</span>
-          <select className="field-input" value={model} onChange={(e) => setModel(e.target.value)}>
-            {BIKE_MODELS.map((m) => <option key={m} value={m}>{m} (Xe tay ga - {vnd(BIKE_PRICE)} / ngày)</option>)}
-          </select>
-        </label>
-        <label><span className={label}>Số lượng xe</span><input className="field-input" type="number" min={1} max={10} value={bikes} onChange={(e) => setBikes(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} /></label>
-        <label><span className={label}>Số ngày thuê</span><input className="field-input" type="number" min={1} max={60} value={days} onChange={(e) => setDays(Math.max(1, Math.min(60, Number(e.target.value) || 1)))} /></label>
-        <label className="sm:col-span-2"><span className={label}>Thời gian nhận xe dự kiến</span><input className="field-input" value={pickup} onChange={(e) => setPickup(e.target.value)} maxLength={80} /></label>
-        <div className="flex items-center justify-between rounded-2xl bg-[#eef4fa] px-5 py-4 sm:col-span-2">
-          <div><p className="font-semibold text-[#0b2e4f]">Tạm tính chi phí thuê xe</p><p className="text-xs text-slate-500">Đồng giá {vnd(BIKE_PRICE)} × số xe × số ngày</p></div>
-          <p className="text-2xl font-bold text-[#087795]">{vnd(estimate)}</p>
-        </div>
-        <div className="sm:col-span-2"><ModalActions onClose={onClose} /></div>
-      </form>
-    </Modal>
-  );
-}
-
-function AirportModal({ onClose, onAdd }: { onClose: () => void; onAdd: (selection: Selection) => void }) {
-  const [longStay, setLongStay] = useState(true);
-  const [car, setCar] = useState<(typeof CARS)[number]['id']>('7');
-  const [trip, setTrip] = useState<(typeof TRIPS)[number]['id']>('round');
-  const [when, setWhen] = useState('');
-  const carInfo = CARS.find((c) => c.id === car)!;
-  const tripInfo = TRIPS.find((t) => t.id === trip)!;
-  const paidPickups = longStay ? 0 : tripInfo.pickups;
-  const estimate = carInfo.price * (paidPickups + tripInfo.dropoffs);
-  const note = [
-    tripInfo.pickups ? (longStay ? 'Miễn phí chiều đón (từ 3 đêm)' : `1 lượt đón (${vnd(carInfo.price)})`) : null,
-    tripInfo.dropoffs ? `1 lượt tiễn (${vnd(carInfo.price)})` : null,
-  ].filter(Boolean).join(' + ');
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onAdd({ id: `airport-${Date.now()}`, title: 'Đưa đón sân bay', detail: `${carInfo.label} · ${tripInfo.label}${when ? ` · ${when}` : ''}${longStay ? ' · booking từ 3 đêm' : ''}`, estimate });
-  }
-  return (
-    <Modal title="Chọn dịch vụ Đưa đón sân bay" subtitle="Sân bay Quốc tế Đà Nẵng ↔ Sóng Homestay" icon={CarFront} onClose={onClose}>
-      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-        <label className="flex items-start gap-3 rounded-2xl border border-[#1565a8]/20 bg-[#eef4fa] p-4 sm:col-span-2">
-          <input type="checkbox" className="mt-1 h-4 w-4 accent-[#1565a8]" checked={longStay} onChange={(e) => setLongStay(e.target.checked)} />
-          <span><span className="block font-semibold text-[#0b2e4f]">Tôi đặt phòng từ 3 đêm trở lên (Miễn phí chiều đón sân bay)</span><span className="text-sm text-slate-500">Áp dụng 0đ cho lượt đón từ sân bay Đà Nẵng về homestay.</span></span>
-        </label>
-        <label><span className={label}>Loại xe riêng</span>
-          <select className="field-input" value={car} onChange={(e) => setCar(e.target.value as typeof car)}>
-            {CARS.map((c) => <option key={c.id} value={c.id}>{c.label} ({vnd(c.price)} / lượt)</option>)}
-          </select>
-        </label>
-        <label><span className={label}>Hành trình</span>
-          <select className="field-input" value={trip} onChange={(e) => setTrip(e.target.value as typeof trip)}>
-            {TRIPS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </label>
-        <label className="sm:col-span-2"><span className={label}>Giờ hạ cánh / khởi hành</span><input className="field-input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
-        <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef4fa] px-5 py-4 sm:col-span-2">
-          <div><p className="font-semibold text-[#0b2e4f]">Chi phí đưa đón</p><p className="text-xs text-[#087795]">{note}</p></div>
-          <p className="text-2xl font-bold text-[#087795]">{vnd(estimate)}</p>
-        </div>
-        <div className="sm:col-span-2"><ModalActions onClose={onClose} /></div>
-      </form>
-    </Modal>
-  );
-}
-
-function RequestPanel({ selections, onRemove, onSent }: { selections: Selection[]; onRemove: (id: string) => void; onSent: () => void }) {
-  const submitContact = useMutation(api.contacts.submit);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', dates: '' });
-  const [state, setState] = useState<'idle' | 'working' | 'sent'>('idle');
-  const [error, setError] = useState('');
-  const total = selections.reduce((sum, s) => sum + s.estimate, 0);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setState('working');
-    setError('');
-    const lines = selections.map((s, i) => `${i + 1}. ${s.title}: ${s.detail} - tạm tính ${vnd(s.estimate)}`);
-    try {
-      await submitContact({
-        propertySlug: 'song-homestay',
-        name: form.name,
-        phone: form.phone,
-        email: form.email,
-        message: ['Yêu cầu dịch vụ từ trang Khám phá Đà Nẵng', form.dates ? `Thời gian lưu trú: ${form.dates}` : '', ...lines, `Tổng tạm tính: ${vnd(total)}`].filter(Boolean).join('\n'),
-      });
-      setState('sent');
-      onSent();
-    } catch (err) {
-      setError(extractErrorMessage(err));
-      setState('idle');
-    }
-  }
-  if (state === 'sent') {
-    return <div id="selected-services" className="rounded-3xl bg-white p-6 text-center shadow-lg"><Check className="mx-auto h-8 w-8 text-[#087795]" /><p className="mt-2 font-semibold text-[#0b2e4f]">Sóng đã nhận yêu cầu và sẽ liên hệ xác nhận sớm nhất.</p></div>;
-  }
-  if (!selections.length) return null;
-  return (
-    <section id="selected-services" className="scroll-mt-28 rounded-3xl bg-white p-6 shadow-lg shadow-sky-950/5 sm:p-8">
-      <h2 className="flex items-center gap-2 text-xl font-bold text-[#0b2e4f]"><ClipboardList className="h-5 w-5 text-[#1565a8]" /> Dịch vụ đã chọn</h2>
-      <ul className="mt-4 divide-y divide-slate-100">
-        {selections.map((s) => (
-          <li key={s.id} className="flex items-start justify-between gap-4 py-3">
-            <div><p className="font-semibold text-[#0b2e4f]">{s.title}</p><p className="text-sm text-slate-500">{s.detail}</p></div>
-            <div className="flex items-center gap-3"><span className="font-bold text-[#087795]">{vnd(s.estimate)}</span><button type="button" onClick={() => onRemove(s.id)} aria-label={`Bỏ ${s.title}`} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 flex justify-between border-t border-slate-200 pt-3 font-bold text-[#0b2e4f]"><span>Tổng tạm tính</span><span>{vnd(total)}</span></p>
-      <form onSubmit={submit} className="mt-6 grid gap-3 sm:grid-cols-2">
-        <label><span className="field-label">Họ và tên</span><input className="field-input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-        <label><span className="field-label">Số điện thoại</span><input className="field-input" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-        <label><span className="field-label">Email</span><input className="field-input" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-        <label><span className="field-label">Thời gian lưu trú (nếu có)</span><input className="field-input" placeholder="VD: 20/11 - 24/11" value={form.dates} onChange={(e) => setForm({ ...form, dates: e.target.value })} /></label>
-        {error ? <p role="alert" className="text-sm text-red-700 sm:col-span-2">{error}</p> : null}
-        <p className="text-xs text-slate-500 sm:col-span-2">Đây là yêu cầu, chưa phải thanh toán. Sóng xác nhận lịch và chi phí trước khi phục vụ.</p>
-        <button className="btn-primary sm:col-span-2" disabled={state === 'working'}>{state === 'working' ? 'Đang gửi…' : 'Gửi yêu cầu cho Sóng'}</button>
-      </form>
-    </section>
-  );
-}
-
-function ServiceCard({ media, title, children, footer, onChoose }: { media: ReactNode; title: string; children: ReactNode; footer: string; onChoose: () => void }) {
+/** Intro card only: services are chosen while booking a stay, not here. */
+function ServiceCard({ media, title, children, footer }: { media: ReactNode; title: string; children: ReactNode; footer: string }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-[0_14px_40px_rgba(8,47,85,0.09)]">
       <div className="relative h-56 overflow-hidden">{media}</div>
@@ -231,7 +32,7 @@ function ServiceCard({ media, title, children, footer, onChoose }: { media: Reac
         <div className="mt-3 flex-1 text-sm leading-6 text-slate-600">{children}</div>
         <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
           <p className="text-xs font-semibold text-[#087795]">{footer}</p>
-          <button type="button" onClick={onChoose} className="btn-primary"><Plus className="h-4 w-4" aria-hidden="true" /> Chọn dịch vụ</button>
+          <Link to="/p/song-homestay/stays" className="btn-primary whitespace-nowrap">Đặt phòng kèm dịch vụ</Link>
         </div>
       </div>
     </article>
@@ -239,26 +40,12 @@ function ServiceCard({ media, title, children, footer, onChoose }: { media: Reac
 }
 
 export function SongExperiencesPage() {
-  const [selections, setSelections] = useState<Selection[]>(loadSelections);
-  const [modal, setModal] = useState<'bike' | 'airport' | null>(null);
   const [toast, setToast] = useState('');
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
-    } catch {
-      // Selections still work for this visit.
-    }
-  }, [selections]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 4000);
     return () => window.clearTimeout(timer);
   }, [toast]);
-  function add(selection: Selection) {
-    setSelections((current) => [...current, selection]);
-    setModal(null);
-    setToast(`Đã thêm ${selection.title} vào danh sách dịch vụ.`);
-  }
   function chat(message: string) {
     chatWithSong(message);
     setToast('Đã sao chép lời nhắn - dán vào Zalo để Sóng tư vấn nhanh nhất.');
@@ -272,18 +59,17 @@ export function SongExperiencesPage() {
             <h1 className="text-4xl font-bold leading-tight text-[#0b2e4f] sm:text-5xl">Khám phá Đà Nẵng <span className="block font-accent font-normal">theo cách của bạn</span></h1>
             <p className="mt-5 text-lg leading-8 text-slate-600">Sẵn sàng phương tiện di chuyển tận cửa cùng loạt gợi ý tour và điểm đến hấp dẫn được thiết kế riêng cho kỳ nghỉ của bạn tại Sóng Homestay.</p>
           </div>
-          <a href="#selected-services" className="btn-secondary"><ClipboardList className="h-4 w-4" /> Dịch vụ đã chọn <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#1565a8] px-1.5 text-xs text-white">{selections.length}</span></a>
         </header>
 
         <section aria-labelledby="transport-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 id="transport-title" className="text-2xl font-bold text-[#0b2e4f] sm:text-3xl">Chủ động hành trình từ lúc hạ cánh</h2>
           </div>
+          <p className="mt-3 max-w-2xl text-slate-600">Thuê xe máy và đưa đón sân bay được chọn ngay trong bước đặt phòng — chọn chỗ nghỉ, rồi thêm dịch vụ vào đơn.</p>
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             <ServiceCard
               title="Thuê xe máy"
               footer="Giao xe tận cửa homestay"
-              onChoose={() => setModal('bike')}
               media={
                 <div className="relative h-full">
                   <img src="/song-homestay/experiences/motorbike.svg" alt="Xe tay ga chạy dọc đường biển Mỹ Khê, phía xa là bán đảo Sơn Trà" className="h-full w-full object-cover" loading="lazy" />
@@ -300,7 +86,6 @@ export function SongExperiencesPage() {
             <ServiceCard
               title="Đưa đón sân bay"
               footer="Miễn phí chiều đón khi ở từ 3 đêm"
-              onChoose={() => setModal('airport')}
               media={<img src="/song-homestay/experiences/airport.svg" alt="Máy bay cất cánh trên sân bay Đà Nẵng, xe riêng của Sóng Homestay chờ đón khách" className="h-full w-full object-cover" loading="lazy" />}
             >
               <p>Tài xế đón đúng giờ tại sảnh sân bay Đà Nẵng (cách Sóng chỉ ~10-15 phút di chuyển), đưa bạn về tận cửa homestay an toàn, không lo chờ đợi.</p>
@@ -311,7 +96,6 @@ export function SongExperiencesPage() {
           </div>
         </section>
 
-        <RequestPanel selections={selections} onRemove={(id) => setSelections((current) => current.filter((s) => s.id !== id))} onSent={() => setSelections([])} />
 
         <section aria-labelledby="tours-title">
           <h2 id="tours-title" className="text-3xl font-bold text-[#0b2e4f] sm:text-4xl">Gợi ý hành trình <span className="font-accent font-normal">khám phá địa phương</span></h2>
@@ -344,8 +128,6 @@ export function SongExperiencesPage() {
         </section>
       </div>
 
-      {modal === 'bike' ? <BikeModal onClose={() => setModal(null)} onAdd={add} /> : null}
-      {modal === 'airport' ? <AirportModal onClose={() => setModal(null)} onAdd={add} /> : null}
       {toast ? <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#0b2e4f] px-5 py-3 text-sm font-semibold text-white shadow-xl">{toast}</p> : null}
     </div>
   );

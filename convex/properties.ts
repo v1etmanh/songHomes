@@ -201,6 +201,7 @@ export const unitTypeBySlug = query({
           priceCents: a.priceCents,
           taxable: a.taxable,
           unitLabel: a.unitLabel,
+          freeFirstUnitMinNights: a.freeFirstUnitMinNights,
         })),
     };
   },

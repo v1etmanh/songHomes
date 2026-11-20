@@ -12,6 +12,7 @@ import {
   daysBetween,
   enumerateNights,
   generateConfirmationCode,
+  stayPerkFreeUnits,
   StayRuleError,
   validateStayRules,
 } from '../shared/pricing';
@@ -87,7 +88,7 @@ export const createHold = mutation({
     checkOut: v.string(),
     adults: v.number(),
     children: v.number(),
-    // Under-2s and pets are recorded for the host but never count toward maxOccupancy.
+    // Under-2s count toward maxOccupancy like any guest; pets never do.
     infants: v.optional(v.number()),
     pets: v.optional(v.number()),
     guest: v.object({
@@ -98,6 +99,9 @@ export const createHold = mutation({
     }),
     addOns: v.array(v.object({ addOnId: v.id('addOns'), quantity: v.number() })),
     promoCode: v.optional(v.string()),
+    // Free-text service details from the booking form (flight time, bike
+    // pickup time…). Stored as a booking note; never affects price.
+    serviceNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const unit = await ctx.db.get(args.unitId);
@@ -160,10 +164,11 @@ export const createHold = mutation({
         throw new ConvexError({ code: 'INVALID_OCCUPANCY', message: `${field} must be between 0 and ${max}.` });
       }
     }
-    if (args.adults + args.children > unitType.maxOccupancy) {
+    // Every infant takes a seat: total = adults + children + infants.
+    if (args.adults + args.children + (args.infants ?? 0) > unitType.maxOccupancy) {
       throw new ConvexError({
         code: 'OVER_OCCUPANCY',
-        message: `This unit holds at most ${unitType.maxOccupancy} guests.`,
+        message: `This unit holds at most ${unitType.maxOccupancy} guests, infants included.`,
       });
     }
 
@@ -233,6 +238,11 @@ export const createHold = mutation({
         notes: [],
       }));
 
+    // Service details are plain text: strip control chars, bound the length.
+    const serviceNote = args.serviceNote
+      ? args.serviceNote.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 500)
+      : '';
+
     // 4. Server-authoritative pricing (add-on prices come from the DB, never the client).
     const addOnLines = [];
     for (const line of args.addOns) {
@@ -251,11 +261,22 @@ export const createHold = mutation({
         quantity: line.quantity,
       });
     }
-    const addOnPriceLines = addOnLines.map((l) => ({
+    // Stay-length perk (e.g. free airport pickup leg from 3 nights) is derived
+    // here from the DB flag and the requested dates — never from the client.
+    const perkFree = stayPerkFreeUnits(
+      addOnLines.map((l) => ({
+        unitPriceCents: l.addOn.priceCents,
+        quantity: l.quantity,
+        freeFirstUnitMinNights: l.addOn.freeFirstUnitMinNights,
+      })),
+      enumerateNights(args.checkIn, args.checkOut).length,
+    );
+    const addOnPriceLines = addOnLines.map((l, index) => ({
       name: l.addOn.name,
       unitPriceCents: l.addOn.priceCents,
       quantity: l.quantity,
       taxable: l.addOn.taxable,
+      ...(perkFree[index] ? { freeQuantity: perkFree[index] } : {}),
     }));
 
     // Promo validation (Shopify-style): existence, active, window, unit-type
@@ -352,7 +373,7 @@ export const createHold = mutation({
       promoCodeId: promoDoc?._id,
       promoCodeSnapshot: promoDoc?.code,
       statusHistory: [{ status: 'hold', ts: now }],
-      notes: [],
+      notes: serviceNote ? [{ ts: now, text: serviceNote, by: 'Khách (dịch vụ)' }] : [],
       createdAt: now,
       updatedAt: now,
     });
@@ -377,13 +398,14 @@ export const createHold = mutation({
         kind: date < args.checkOut ? 'stay' : 'prep',
       });
     }
-    for (const line of addOnLines) {
+    for (const [index, line] of addOnLines.entries()) {
       await ctx.db.insert('bookingAddOns', {
         bookingId,
         addOnId: line.addOn._id,
         nameSnapshot: line.addOn.name,
         unitPriceCents: line.addOn.priceCents,
         quantity: line.quantity,
+        ...(perkFree[index] ? { freeQuantity: perkFree[index] } : {}),
         taxable: line.addOn.taxable,
         soldAt: now,
       });
@@ -661,9 +683,11 @@ export const confirmPayAtProperty = mutation({
       }],
       updatedAt: now,
     });
+    // A Sóng request is not confirmed yet: tell the guest it arrived; the
+    // 'confirmation' email goes out when staff confirm it.
     await ctx.scheduler.runAfter(0, internal.email.sendBookingEmail, {
       bookingId: booking._id,
-      kind: 'confirmation',
+      kind: submittedStatus === 'pending' ? 'request_received' : 'confirmation',
     });
     return { confirmationCode: booking.confirmationCode };
   },
@@ -802,6 +826,7 @@ async function publicBookingView(ctx: QueryCtx, booking: Doc<'bookings'>) {
       name: a.nameSnapshot,
       quantity: a.quantity,
       unitPriceCents: a.unitPriceCents,
+      freeQuantity: a.freeQuantity ?? 0,
     })),
   };
 }

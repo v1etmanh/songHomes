@@ -50,7 +50,7 @@ function Stepper({ label, hint, value, min, max, onChange }: { label: string; hi
   );
 }
 
-/** "Khách" dropdown: adults 13+, children 2–12, infants under 2 and pets, with capacity enforced on adults + children. */
+/** "Khách" dropdown: adults 13+, children 2–12, infants under 2 and pets, with capacity enforced on adults + children + infants (every infant takes a seat). */
 export function GuestPicker({ value, onChange, maxOccupancy }: { value: Pick<GuestFormValue, 'adults' | 'children' | 'infants' | 'pets'>; onChange: (next: Pick<GuestFormValue, 'adults' | 'children' | 'infants' | 'pets'>) => void; maxOccupancy: number }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -62,7 +62,7 @@ export function GuestPicker({ value, onChange, maxOccupancy }: { value: Pick<Gue
     document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape); };
   }, [open]);
-  const seated = value.adults + value.children;
+  const seated = value.adults + value.children + value.infants;
   return (
     <div ref={root} className="relative">
       <span className="field-label">Khách</span>
@@ -74,9 +74,9 @@ export function GuestPicker({ value, onChange, maxOccupancy }: { value: Pick<Gue
         <div className="absolute left-0 right-0 z-30 mt-2 rounded-2xl border border-slate-200 bg-white px-5 py-1 shadow-xl">
           <Stepper label="Người lớn" hint="Từ 13 tuổi trở lên" value={value.adults} min={1} max={value.adults + Math.max(0, maxOccupancy - seated)} onChange={(adults) => onChange({ ...value, adults })} />
           <Stepper label="Trẻ em" hint="Độ tuổi 2-12" value={value.children} min={0} max={value.children + Math.max(0, maxOccupancy - seated)} onChange={(children) => onChange({ ...value, children })} />
-          <Stepper label="Em bé" hint="Dưới 2 tuổi" value={value.infants} min={0} max={MAX_INFANTS} onChange={(infants) => onChange({ ...value, infants })} />
+          <Stepper label="Em bé" hint="Dưới 2 tuổi" value={value.infants} min={0} max={Math.min(MAX_INFANTS, value.infants + Math.max(0, maxOccupancy - seated))} onChange={(infants) => onChange({ ...value, infants })} />
           <Stepper label="Thú cưng" hint="Vui lòng báo trước cho Sóng" value={value.pets} min={0} max={MAX_PETS} onChange={(pets) => onChange({ ...value, pets })} />
-          <p className="py-3 text-xs leading-5 text-slate-500">Chỗ ở này cho phép tối đa {maxOccupancy} khách, không tính em bé. Mang theo thú cưng cần được Sóng xác nhận trước.</p>
+          <p className="py-3 text-xs leading-5 text-slate-500">Chỗ ở này cho tối đa {maxOccupancy} khách, bao gồm em bé. Mang theo thú cưng cần được Sóng xác nhận trước.</p>
         </div>
       ) : null}
     </div>

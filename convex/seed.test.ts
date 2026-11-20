@@ -57,7 +57,7 @@ describe('Consensus Commons seed migration', () => {
       .collect())).toHaveLength(1);
   });
 
-  it('seeds Sóng Homestay — Đà Nẵng with the 8 catalog stays and 4 services', async () => {
+  it('seeds Sóng Homestay — Đà Nẵng with the 8 catalog stays and 6 services (pickup and drop-off sold separately)', async () => {
     const t = convexTest(schema, modules);
     await t.mutation((internal as any).seed.run, {});
 
@@ -84,7 +84,7 @@ describe('Consensus Commons seed migration', () => {
     expect(songData!.prop).toMatchObject({ phone: '0911.388.703', email: 'Songhomestay@gmail.com' });
     expect(songData!.units).toHaveLength(8);
     expect(songData!.unitTypes).toHaveLength(8);
-    expect(songData!.addOns).toHaveLength(4);
+    expect(songData!.addOns).toHaveLength(6);
     expect(songData!.units.map((u) => u.slug)).toEqual([
       'song-pool-villa', 'song-garden-house', 'song-rooftop-house', 'song-sea-view-apartment',
       'song-coastal-apartment', 'song-ocean-view-apartment', 'song-an-thuong-house', 'song-duong-ton-hai-house',

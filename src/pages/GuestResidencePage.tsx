@@ -23,6 +23,8 @@ const STATUS_LABELS: Record<string, string> = {
   checked_out: 'Đã trả phòng', cancelled: 'Đã hủy', expired: 'Hết hạn',
 };
 const REASONS = ['Du lịch / nghỉ dưỡng', 'Công tác', 'Thăm thân', 'Khác'];
+/** Staff must confirm the booking before the guest declares (mirrors residence.assertDeclarable). */
+const DECLARABLE = new Set(['confirmed', 'checked_in']);
 
 /** /tai-khoan/luu-tru[/:bookingId] — the bell's destination. */
 export function GuestResidencePage() {
@@ -67,7 +69,7 @@ function BookingOrder({ booking, email }: { booking: MyBooking; email: string | 
             <span className="text-slate-500">{formatDisplayDate(booking.checkIn)} → {formatDisplayDate(booking.checkOut)} · {STATUS_LABELS[booking.status] ?? booking.status}</span>
           </span>
         </button>
-        {booking.progress.required > 0 ? (
+        {booking.progress.required > 0 && DECLARABLE.has(booking.status) ? (
           booking.progress.missing > 0
             ? <Link to={`/tai-khoan/luu-tru/${booking.bookingId}`} className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">Thiếu {booking.progress.missing} tờ khai</Link>
             : <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700"><CheckCircle2 className="h-4 w-4" />Đã khai báo đủ</span>
@@ -87,7 +89,7 @@ function BookingOrder({ booking, email }: { booking: MyBooking; email: string | 
           {error ? <div className="mt-3"><ErrorMessage message={error} /></div> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {booking.status === 'hold' ? <Link to={checkoutPath(booking.bookingId, booking.confirmationCode)} className="btn-primary">Tiếp tục đặt phòng</Link> : null}
-            {booking.progress.missing > 0 ? <Link to={`/tai-khoan/luu-tru/${booking.bookingId}`} className="btn-secondary">Khai báo lưu trú</Link> : null}
+            {booking.progress.missing > 0 && DECLARABLE.has(booking.status) ? <Link to={`/tai-khoan/luu-tru/${booking.bookingId}`} className="btn-secondary">Khai báo lưu trú</Link> : null}
             {CANCELLABLE.has(booking.status) ? (
               <button type="button" onClick={cancelBooking} disabled={state === 'working' || !email} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50">
                 {state === 'working' ? 'Đang hủy…' : 'Hủy đơn'}
@@ -141,8 +143,16 @@ function BookingDeclaration({ bookingId }: { bookingId: Id<'bookings'> }) {
   const { progress } = data;
   const done = progress.required > 0 && progress.missing === 0;
   const percent = progress.required ? Math.min(100, Math.round((progress.declared / progress.required) * 100)) : 100;
-  const canDeclare = ['hold', 'pending', 'confirmed', 'checked_in'].includes(data.status)
-    && data.registrations.length < data.adults + data.children;
+  const canDeclare = DECLARABLE.has(data.status) && data.registrations.length < data.adults + data.children;
+  // A pending request may still be declined: the declaration block appears only after confirmation.
+  if (!DECLARABLE.has(data.status) && !data.registrations.length) {
+    return (
+      <section className="card px-5 py-6 text-sm text-slate-600">
+        <h2 className="font-extrabold text-[#073b59]">Đơn <span className="font-mono">{data.confirmationCode}</span> · {STATUS_LABELS[data.status] ?? data.status}</h2>
+        <p className="mt-1">{data.status === 'pending' || data.status === 'hold' ? 'Bạn có thể khai báo lưu trú sau khi Sóng xác nhận đơn. Chúng tôi sẽ báo qua email và biểu tượng chuông.' : 'Đơn này không cần khai báo lưu trú.'}</p>
+      </section>
+    );
+  }
 
   return (
     <section className={`card overflow-hidden ${done ? '' : 'border-sky-300'}`}>
@@ -152,7 +162,7 @@ function BookingDeclaration({ bookingId }: { bookingId: Id<'bookings'> }) {
           <span className={`text-sm font-bold ${done ? 'text-sky-700' : 'text-sky-800'}`}>{progress.declared}/{progress.required} người lớn đã khai</span>
         </div>
         <div className="mt-2 h-2 rounded-full bg-white"><div className={`h-full rounded-full ${done ? 'bg-sky-500' : 'bg-sky-500'}`} style={{ width: `${percent}%` }} /></div>
-        {!done ? <p className="mt-2 text-sm text-sky-900">Bắt buộc: khai báo đủ {progress.missing} người lớn còn lại trước khi nhận phòng. Lễ tân sẽ không thể check-in khi còn thiếu tờ khai.</p> : null}
+        {!done ? <p className="mt-2 text-sm text-sky-900">Bắt buộc: khai báo đủ {progress.missing} người lớn còn lại trước khi nhận phòng. Lễ tân sẽ hỗ trợ nếu bạn cần.</p> : <p className="mt-2 flex items-center gap-1.5 text-sm font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Đã khai báo xong cho tất cả người lớn. Cảm ơn bạn!</p>}
       </div>
       <dl className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-3">
         <div><dt className="text-slate-500">Chỗ nghỉ</dt><dd className="font-semibold text-slate-900">{data.unitName}</dd></div>

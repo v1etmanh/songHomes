@@ -146,7 +146,7 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
         <div className="flex flex-wrap gap-2">
           <button type="button" className={tab === 'booking' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('booking')}><Users className="h-4 w-4" /> Booking ngoài</button>
           <button type="button" className={tab === 'units' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('units')}><BedDouble className="h-4 w-4" /> Căn ({catalog?.units.length ?? 0})</button>
-          <button type="button" className={tab === 'services' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('services')}><ConciergeBell className="h-4 w-4" /> Dịch vụ ({catalog?.addOns.length ?? 0})</button>
+          <button type="button" className={tab === 'services' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('services')}><ConciergeBell className="h-4 w-4" /> Dịch vụ ({catalog?.addOns.filter((service) => service.active).length ?? 0})</button>
         </div>
       </div>}
 
@@ -203,7 +203,7 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
             <button type="button" className="btn-primary self-end" disabled={working || !newServiceName || !newServicePrice || !newServiceUnit} onClick={() => void run(async () => { await createAddOn({ propertyId, name: newServiceName, priceCents: Math.round(Number(newServicePrice) * 100), unitLabel: newServiceUnit, taxable: false }); setNewServiceName(''); setNewServicePrice(''); }, 'Đã thêm dịch vụ mới.')}><Plus className="h-4 w-4" /> Thêm dịch vụ</button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {catalog?.addOns.map((service) => <ServiceEditor key={service.addOnId} service={service} currency={catalog.property.currency} disabled={working} onSave={(values) => run(() => updateAddOn({ propertyId, addOnId: service.addOnId, ...values }), `Đã cập nhật ${values.name}.`)} />)}
+            {catalog?.addOns.filter((service) => service.active).map((service) => <ServiceEditor key={service.addOnId} service={service} currency={catalog.property.currency} disabled={working} onSave={(values) => run(() => updateAddOn({ propertyId, addOnId: service.addOnId, ...values }), `Đã cập nhật ${values.name}.`)} />)}
           </div>
         </div>
       ) : null}

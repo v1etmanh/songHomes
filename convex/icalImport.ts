@@ -1151,6 +1151,8 @@ export const resolveConflict = mutation({
     resolutionType: v.union(v.literal('move_unit'), v.literal('cancel_booking'), v.literal('acknowledge')),
     targetUnitId: v.optional(v.id('units')),
     note: v.optional(v.string()),
+    // The other booking of the conflicting pair, for the resolution log.
+    conflictWith: v.optional(v.id('bookings')),
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
@@ -1165,11 +1167,39 @@ export const resolveConflict = mutation({
         'ical.resolve_conflict',
       );
       actorName = access.profile.name;
+    } else {
+      // Demo: name the signed-in staff member when there is one.
+      try {
+        const access = await requireMutationPropertyCapability(ctx, booking.propertyId, 'booking.write', 'ical.resolve_conflict');
+        actorName = access.profile.name;
+      } catch {
+        // synthetic demo identity
+      }
     }
 
     const now = Date.now();
     const originalUnitId = booking.unitId;
-    const customNote = args.note?.trim();
+    const customNote = args.note?.trim().slice(0, 500) || undefined;
+    const other = args.conflictWith ? await ctx.db.get(args.conflictWith) : null;
+    const pair = other && other.propertyId === booking.propertyId && other.unitId === booking.unitId ? other : null;
+    const originalUnit = await ctx.db.get(originalUnitId);
+    async function logResolution(method: 'move_unit' | 'cancel_booking' | 'acknowledge', detail: string) {
+      await ctx.db.insert('conflictResolutions', {
+        propertyId: booking!.propertyId,
+        unitId: originalUnitId,
+        unitName: originalUnit?.name ?? 'Chỗ nghỉ',
+        overlapStart: pair ? (pair.checkIn > booking!.checkIn ? pair.checkIn : booking!.checkIn) : booking!.checkIn,
+        overlapEnd: pair ? (pair.checkOut < booking!.checkOut ? pair.checkOut : booking!.checkOut) : booking!.checkOut,
+        bookingId: booking!._id,
+        bookingCode: booking!.confirmationCode,
+        ...(pair ? { otherBookingId: pair._id, otherBookingCode: pair.confirmationCode } : {}),
+        method,
+        detail,
+        ...(customNote ? { note: customNote } : {}),
+        byName: actorName,
+        at: now,
+      });
+    }
 
     if (args.resolutionType === 'move_unit') {
       if (!args.targetUnitId) throw new ConvexError('TARGET_UNIT_REQUIRED');
@@ -1210,6 +1240,7 @@ export const resolveConflict = mutation({
 
       await healExternalBookingsOnUnit(ctx, originalUnitId, now);
       await markPropertyDirtyInline(ctx, booking.propertyId);
+      await logResolution('move_unit', `Chuyển ${booking.confirmationCode} sang ${targetUnit.name}`);
       return { resolved: true, action: 'move_unit', targetUnitName: targetUnit.name };
     }
 
@@ -1230,6 +1261,7 @@ export const resolveConflict = mutation({
 
       await healExternalBookingsOnUnit(ctx, originalUnitId, now);
       await markPropertyDirtyInline(ctx, booking.propertyId);
+      await logResolution('cancel_booking', `Hủy ${booking.confirmationCode}`);
       return { resolved: true, action: 'cancel_booking' };
     }
 
@@ -1243,6 +1275,22 @@ export const resolveConflict = mutation({
       notes: [...booking.notes, { ts: now, text: resolutionText, by: actorName }],
       updatedAt: now,
     });
+    await logResolution('acknowledge', 'Đã xử lý trên nền tảng OTA / bên ngoài');
     return { resolved: true, action: 'acknowledge' };
+  },
+});
+
+/** "Đã xử lý" tab of the conflicts page: newest resolutions first, with method and staff name. */
+export const resolvedConflicts = query({
+  args: { propertyId: v.id('properties') },
+  handler: async (ctx, args) => {
+    if (process.env.DEMO_MODE !== 'true') {
+      await requirePropertyCapability(ctx, args.propertyId, 'booking.read');
+    }
+    return await ctx.db
+      .query('conflictResolutions')
+      .withIndex('by_property_at', (q) => q.eq('propertyId', args.propertyId))
+      .order('desc')
+      .take(200);
   },
 });

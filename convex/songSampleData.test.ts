@@ -38,7 +38,9 @@ describe('Sóng Homestay sample data', () => {
     expect(snapshot.kpis.conflictCount).toBeGreaterThanOrEqual(2);
     expect(snapshot.kpis.pendingBookings).toBeGreaterThan(0);
     expect(snapshot.sourceCounts.length).toBeGreaterThanOrEqual(5);
-    expect(snapshot.serviceUsage.length).toBe(4);
+    expect(snapshot.serviceUsage.map((row: any) => row.name)).toEqual(['Thuê xe máy', 'Đưa đón sân bay']); // tours are not counted
+    expect(snapshot.canSeeRevenue).toBe(true);
+    expect(snapshot.channelReport.total).toBe(snapshot.kpis.totalBookings);
     for (const row of snapshot.serviceUsage) expect(row.count).toBeGreaterThan(0);
     expect(snapshot.dailyRevenue.length).toBeGreaterThan(20);
     expect(snapshot.bookings.length).toBeGreaterThanOrEqual(40);

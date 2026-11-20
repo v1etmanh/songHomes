@@ -32,7 +32,7 @@ export function ServicesDesk({
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         {Object.entries({
-          'Dịch vụ đang cung cấp': data.active + ' / ' + data.total,
+          'Dịch vụ đang cung cấp': data.active,
           'Khách đang phục vụ': data.customers,
           'Doanh thu dịch vụ trong kỳ': formatMoney(data.revenue, currency),
         }).map(([label, value]) => (

@@ -175,7 +175,7 @@ describe('front desk', () => {
     expect(booking).toMatchObject({ status: 'no_show', version: 1 });
   });
 
-  it('refuses check-in until every adult has a residence declaration when the property requires it', async () => {
+  it('lets front desk check in even while residence declarations are missing (staff helps the guest declare)', async () => {
     const t = convexTest(schema, modules);
     const f = await seed(t);
     const asOwner = t.withIdentity(identityFor(f.userId));
@@ -185,9 +185,6 @@ describe('front desk', () => {
       registrationType: 'tam_tru', checkInDate: '2030-05-01', checkOutDate: '2030-05-03', status: 'declared', submittedBy: 'guest', createdAt: 1, updatedAt: 1,
     }));
     await declare('079000000001');
-    await expect(asOwner.mutation((api as any).frontDesk.transition, { propertyId: f.propertyId, bookingId: f.bookingId, transition: 'check_in', expectedVersion: 0, requestId: 'res-1' }))
-      .rejects.toThrow(/RESIDENCE_INCOMPLETE|Còn thiếu 1/);
-    await declare('079000000002');
     const checkedIn = await asOwner.mutation((api as any).frontDesk.transition, { propertyId: f.propertyId, bookingId: f.bookingId, transition: 'check_in', expectedVersion: 0, requestId: 'res-2' });
     expect(checkedIn).toMatchObject({ status: 'checked_in' });
   });

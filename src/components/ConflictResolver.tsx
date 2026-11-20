@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
@@ -34,55 +35,115 @@ function isExternal(side: Side) {
   return side.status === 'external';
 }
 
+const METHOD_LABEL: Record<string, string> = { move_unit: 'Chuyển căn', cancel_booking: 'Hủy booking', acknowledge: 'Xử lý trên OTA / bên ngoài' };
+const shortDay = (d: string) => `${d.slice(8)}/${d.slice(5, 7)}`;
+
 /**
- * Double-booking resolution: both sides of every overlap, with the actions each side allows.
- * With `bookingId`, only the overlaps that booking is part of (the front desk's per-row "Xử lý").
+ * Double-booking alerts, Sóng style: a compact list (căn · đêm trùng · 2 booking)
+ * with a "Xử lý" action per row that opens the resolution panel in place.
+ * Handled conflicts move to the "Đã xử lý" tab with how and by whom.
+ * With `bookingId` (front desk's per-row "Xử lý"), only that booking's panels show.
  */
 export function ConflictResolver({ propertyId, bookingId }: { propertyId: Id<'properties'>; bookingId?: Id<'bookings'> }) {
   const data = useQuery(api.icalImport.dashboardForProperty, { propertyId });
+  const resolved = useQuery(api.icalImport.resolvedConflicts, bookingId ? 'skip' : { propertyId });
   const sim = useQuery(api.otaSimulator.status, {});
-  if (data === undefined || sim === undefined) return <Spinner label="Đang tải cảnh báo…" />;
+  const [params, setParams] = useSearchParams();
+  const [openId, setOpenId] = useState<string | null>(null);
+  if (data === undefined || sim === undefined || (!bookingId && resolved === undefined)) return <Spinner label="Đang tải cảnh báo…" />;
   if (data === null) return null;
   const listings = sim.enabled ? sim.listings : [];
+  const tab = params.get('tab') === 'resolved' ? 'resolved' : 'open';
+  const setTab = (next: 'open' | 'resolved') => setParams((prev) => { const p = new URLSearchParams(prev); if (next === 'open') p.delete('tab'); else p.set('tab', next); return p; }, { replace: true });
 
   const conflicts = bookingId ? data.conflicts.filter((c) => c.bookingA.bookingId === bookingId || c.bookingB.bookingId === bookingId) : data.conflicts;
-  if (!conflicts.length) {
-    return (
-      <section className="rounded-2xl border border-emerald-200 bg-white p-10 text-center shadow-sm">
-        <ShieldCheck className="mx-auto h-10 w-10 text-emerald-600" />
-        <h2 className="mt-3 text-lg font-extrabold text-[#10234a]">Không có booking trùng lịch</h2>
-        <p className="mt-1 text-sm text-slate-500">Mọi đêm đang chỉ thuộc về một booking. Cảnh báo mới sẽ hiện ở đây sau mỗi lần đồng bộ iCal.</p>
-      </section>
-    );
-  }
+  const card = (conflict: (typeof conflicts)[number]) => (
+    <ConflictCard
+      key={conflict.conflictId}
+      propertyId={propertyId}
+      unitId={conflict.unitId}
+      unitName={conflict.unitName}
+      unitSlug={conflict.unitSlug}
+      overlapNights={conflict.overlapNights}
+      sides={[
+        { side: conflict.bookingA, freeUnits: conflict.availableUnitsForA },
+        { side: conflict.bookingB, freeUnits: conflict.availableUnitsForB },
+      ]}
+      listings={listings}
+    />
+  );
+  if (bookingId) return conflicts.length ? <div className="space-y-5">{conflicts.map(card)}</div> : <AllClear />;
 
+  const rows = resolved ?? [];
   return (
-    <div className="space-y-5">
-      {bookingId ? null : <section className="rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-6 text-slate-600 shadow-sm">
-        <h2 className="font-extrabold text-[#10234a]">Cách xử lý</h2>
-        <ol className="mt-2 list-decimal space-y-1 pl-5">
-          <li>Chọn booking được giữ: thường là bên đặt trước (không bị gắn cờ) hoặc bên đã thanh toán.</li>
-          <li>Booking nội bộ (Website, Zalo, điện thoại…): <strong>chuyển sang căn còn trống</strong> hoặc <strong>hủy</strong> ngay tại đây.</li>
-          <li>Booking từ Airbnb/Booking.com: OpenStays không sửa được bên đó. Đổi ngày, chuyển chỗ hoặc hủy trên nền tảng, rồi bấm <strong>Đồng bộ lại</strong>; cảnh báo tự biến mất khi hết trùng. Nếu đã sắp xếp cho khách OTA ở căn khác, dùng <strong>Chuyển căn</strong>.</li>
-          <li><strong>Đánh dấu đã xử lý</strong> chỉ tắt cảnh báo khi đã giải quyết bên ngoài và đang chờ lần đồng bộ sau.</li>
-        </ol>
-      </section>}
-      {conflicts.map((conflict) => (
-        <ConflictCard
-          key={conflict.conflictId}
-          propertyId={propertyId}
-          unitId={conflict.unitId}
-          unitName={conflict.unitName}
-          unitSlug={conflict.unitSlug}
-          overlapNights={conflict.overlapNights}
-          sides={[
-            { side: conflict.bookingA, freeUnits: conflict.availableUnitsForA },
-            { side: conflict.bookingB, freeUnits: conflict.availableUnitsForB },
-          ]}
-          listings={listings}
-        />
-      ))}
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Trạng thái cảnh báo" className="inline-flex rounded-full border border-sky-100 bg-white p-1 shadow-sm">
+        {([['open', `Chưa xử lý (${conflicts.length})`], ['resolved', `Đã xử lý (${rows.length})`]] as const).map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+            className={`rounded-full px-4 py-1.5 text-sm font-bold transition ${tab === key ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-sky-50'}`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'open' ? (
+        conflicts.length ? (
+          <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+            <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tên phòng</th><th className="p-3">Đêm trùng</th><th className="p-3">Booking</th><th className="p-3 text-right">Thao tác</th></tr></thead>
+              <tbody>
+                {conflicts.map((conflict) => {
+                  const open = openId === conflict.conflictId;
+                  return [
+                    <tr key={conflict.conflictId} className="border-t border-slate-100">
+                      <td className="min-w-48 p-3 font-bold text-[#10234a] !whitespace-normal">{conflict.unitName}</td>
+                      <td className="p-3"><span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">{conflict.overlapNights.length} đêm · {conflict.overlapNights.map(shortDay).join(', ')}</span></td>
+                      <td className="p-3 text-xs text-slate-600">{[conflict.bookingA, conflict.bookingB].map((b) => `${b.confirmationCode} (${sourceLabel(b.source)})`).join(' ↔ ')}</td>
+                      <td className="p-3 text-right">
+                        <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : conflict.conflictId)}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${open ? 'border border-slate-200 bg-white text-slate-700' : 'bg-red-600 text-white hover:bg-red-700'}`}>
+                          {open ? 'Đóng' : 'Xử lý'}
+                        </button>
+                      </td>
+                    </tr>,
+                    open ? <tr key={`${conflict.conflictId}:panel`} className="bg-slate-50/60"><td colSpan={4} className="p-4 !whitespace-normal">{card(conflict)}</td></tr> : null,
+                  ];
+                })}
+              </tbody>
+            </table>
+          </section>
+        ) : <AllClear />
+      ) : (
+        <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tên phòng</th><th className="p-3">Đêm trùng</th><th className="p-3">Booking</th><th className="p-3">Cách xử lý</th><th className="p-3">Người xử lý</th><th className="p-3">Thời gian</th></tr></thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row._id} className="border-t border-slate-100 align-top">
+                    <td className="min-w-44 p-3 font-bold text-[#10234a] !whitespace-normal">{row.unitName}</td>
+                    <td className="p-3">{shortDay(row.overlapStart)} → {shortDay(row.overlapEnd)}</td>
+                    <td className="p-3 text-xs text-slate-600">{row.bookingCode}{row.otherBookingCode ? ` ↔ ${row.otherBookingCode}` : ''}</td>
+                    <td className="min-w-56 p-3 !whitespace-normal"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">{METHOD_LABEL[row.method]}</span><p className="mt-1 text-xs text-slate-600">{row.detail}{row.note ? ` — ${row.note}` : ''}</p></td>
+                    <td className="p-3 font-semibold text-slate-700">{row.byName}</td>
+                    <td className="p-3 text-xs text-slate-500">{new Date(row.at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  </tr>
+                ))}
+                {!rows.length ? <tr><td colSpan={6} className="p-8 text-center text-slate-400">Chưa có cảnh báo nào được xử lý.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
+  );
+}
+
+function AllClear() {
+  return (
+    <section className="rounded-2xl border border-emerald-200 bg-white p-10 text-center shadow-sm">
+      <ShieldCheck className="mx-auto h-10 w-10 text-emerald-600" />
+      <h2 className="mt-3 text-lg font-extrabold text-[#10234a]">Không có booking trùng lịch</h2>
+      <p className="mt-1 text-sm text-slate-500">Mọi đêm đang chỉ thuộc về một booking. Cảnh báo mới sẽ hiện ở đây sau mỗi lần đồng bộ iCal.</p>
+    </section>
   );
 }
 
@@ -98,6 +159,7 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
   const resolve = useMutation(api.icalImport.resolveConflict);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [note, setNote] = useState('');
   const flagged = sides.find((s) => s.side.syncConflict)?.side;
   const kept = flagged ? sides.find((s) => s.side.bookingId !== flagged.bookingId)?.side : undefined;
 
@@ -135,11 +197,17 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
             side={side}
             freeUnits={freeUnits}
             recommended={flagged?.bookingId === side.bookingId}
+            otherId={sides.find((s) => s.side.bookingId !== side.bookingId)!.side.bookingId}
+            note={note}
             listing={listings.find((l) => l.unitId === unitId && l.platform === PLATFORM_BY_LABEL[sourceLabel(side.source)])}
             busy={busy}
             run={run}
           />
         ))}
+      </div>
+      <div className="px-5 pb-1">
+        <label className="block"><span className="field-label">Ghi chú cách xử lý (lưu vào lịch sử)</span>
+          <input className="field-input" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="VD: đã gọi khách, đổi sang căn khác cùng giá" /></label>
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-red-100 px-5 py-3">
         <span className="text-sm text-slate-600" role="status">{message}</span>
@@ -148,7 +216,7 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
           className="btn-secondary"
           disabled={busy}
           onClick={() => void run(
-            () => resolve({ bookingId: (flagged ?? sides[1].side).bookingId, resolutionType: 'acknowledge' }),
+            () => { const target = flagged ?? sides[1].side; return resolve({ bookingId: target.bookingId, resolutionType: 'acknowledge', note: note || undefined, conflictWith: sides.find((s) => s.side.bookingId !== target.bookingId)!.side.bookingId }); },
             'Đã đánh dấu đã xử lý.',
           )}
         >
@@ -159,13 +227,15 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
   );
 }
 
-function BookingSide({ propertyId, unitId, unitSlug, side, freeUnits, recommended, listing, busy, run }: {
+function BookingSide({ propertyId, unitId, unitSlug, side, freeUnits, recommended, otherId, note, listing, busy, run }: {
   propertyId: Id<'properties'>;
   unitId: Id<'units'>;
   unitSlug: string;
   side: Side;
   freeUnits: Array<{ unitId: Id<'units'>; name: string }>;
   recommended: boolean;
+  otherId: Id<'bookings'>;
+  note: string;
   listing?: { platform: 'airbnb' | 'booking'; active: boolean };
   busy: boolean;
   run: (task: () => Promise<unknown>, done: string) => Promise<void>;
@@ -219,7 +289,7 @@ function BookingSide({ propertyId, unitId, unitSlug, side, freeUnits, recommende
               className="btn-secondary !px-3 !py-1.5 text-xs"
               disabled={busy || !target}
               onClick={() => void run(
-                () => resolve({ bookingId: side.bookingId, resolutionType: 'move_unit', targetUnitId: target as Id<'units'> }),
+                () => resolve({ bookingId: side.bookingId, resolutionType: 'move_unit', targetUnitId: target as Id<'units'>, note: note || undefined, conflictWith: otherId }),
                 `Đã chuyển ${side.confirmationCode} sang căn mới, giữ nguyên giá.`,
               )}
             >
@@ -234,7 +304,7 @@ function BookingSide({ propertyId, unitId, unitSlug, side, freeUnits, recommende
             disabled={busy}
             onClick={() => {
               if (!window.confirm(`Hủy booking ${side.confirmationCode}? Hãy báo khách trước khi hủy.`)) return;
-              void run(() => resolve({ bookingId: side.bookingId, resolutionType: 'cancel_booking' }), `Đã hủy ${side.confirmationCode}.`);
+              void run(() => resolve({ bookingId: side.bookingId, resolutionType: 'cancel_booking', note: note || undefined, conflictWith: otherId }), `Đã hủy ${side.confirmationCode}.`);
             }}
           >
             <XCircle className="h-3.5 w-3.5" />Hủy booking

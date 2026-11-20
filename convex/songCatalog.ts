@@ -232,11 +232,21 @@ export async function upsertSongCatalog(ctx: MutationCtx, propertyId: Id<'proper
   return result;
 }
 
-/** Add-ons offered while booking: transport is bookable, tour advice is free. */
-export const SONG_ADD_ONS = [
+/** Stays of this many nights or more get one airport pickup leg free. */
+export const SONG_FREE_PICKUP_MIN_NIGHTS = 3;
+
+/**
+ * Add-ons offered while booking: transport is bookable, tour advice is free.
+ * Airport transfer is sold per leg: pickup (đón) and drop-off (tiễn) are
+ * separate add-ons so only the pickup carries the stay-length perk — from
+ * SONG_FREE_PICKUP_MIN_NIGHTS nights one pickup leg is free.
+ */
+export const SONG_ADD_ONS: Array<{ name: string; priceCents: number; unitLabel: string; freeFirstUnitMinNights?: number }> = [
   { name: 'Thuê xe máy (Tay ga Vision / Air Blade / Lead 125)', priceCents: 150_000_00, unitLabel: 'ngày' },
-  { name: 'Đưa đón sân bay Đà Nẵng (Xe riêng 7 chỗ)', priceCents: 150_000_00, unitLabel: 'lượt' },
-  { name: 'Đưa đón sân bay Đà Nẵng (Xe 16 chỗ)', priceCents: 300_000_00, unitLabel: 'lượt' },
+  { name: 'Đón sân bay Đà Nẵng (Xe riêng 7 chỗ)', priceCents: 150_000_00, unitLabel: 'lượt', freeFirstUnitMinNights: SONG_FREE_PICKUP_MIN_NIGHTS },
+  { name: 'Đón sân bay Đà Nẵng (Xe 16 chỗ)', priceCents: 300_000_00, unitLabel: 'lượt', freeFirstUnitMinNights: SONG_FREE_PICKUP_MIN_NIGHTS },
+  { name: 'Tiễn sân bay Đà Nẵng (Xe riêng 7 chỗ)', priceCents: 150_000_00, unitLabel: 'lượt' },
+  { name: 'Tiễn sân bay Đà Nẵng (Xe 16 chỗ)', priceCents: 300_000_00, unitLabel: 'lượt' },
   { name: 'Tư vấn tour tham quan du lịch Đà Nẵng (Miễn phí)', priceCents: 0, unitLabel: 'lượt' },
 ];
 
@@ -249,7 +259,7 @@ export async function upsertSongAddOns(ctx: MutationCtx, propertyId: Id<'propert
   const kept = new Set<Id<'addOns'>>();
   for (const [index, addOn] of SONG_ADD_ONS.entries()) {
     const match = existing.find((row) => row.name === addOn.name);
-    const fields = { ...addOn, taxable: false, appliesTo: [], active: true, sortOrder: index + 1 };
+    const fields = { freeFirstUnitMinNights: undefined, ...addOn, taxable: false, appliesTo: [], active: true, sortOrder: index + 1 };
     if (match) {
       await ctx.db.patch(match._id, fields);
       kept.add(match._id);

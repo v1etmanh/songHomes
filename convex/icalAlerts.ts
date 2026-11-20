@@ -4,6 +4,7 @@ import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
+import { exportFeedUrl } from './ical';
 
 // iCal sync history + staff alerts. A feed alerts when it starts failing (and
 // again if it is still failing after FAILURE_REMINDER_MS), when it recovers,
@@ -11,14 +12,19 @@ import { requireMutationPropertyCapability, requirePropertyCapability } from './
 const FAILURE_REMINDER_MS = 6 * 60 * 60 * 1000;
 const RECENT_SCAN = 200;
 
-export const DEFAULT_SYNC_SETTINGS = { alertEmails: [] as string[], randomizerEnabled: true, conflictRate: 0.35 };
+export const DEFAULT_SYNC_SETTINGS = { alertEmails: [] as string[], randomizerEnabled: true, conflictRate: 0.05 };
+/** Simulated double bookings stay rare: 0–10% (WEBSITE.pdf r5). */
+export const MAX_CONFLICT_RATE = 0.1;
 
 export async function loadSyncSettings(ctx: QueryCtx | MutationCtx, propertyId: Id<'properties'>) {
   const row = await ctx.db
     .query('icalSyncSettings')
     .withIndex('by_property', (q) => q.eq('propertyId', propertyId))
     .unique();
-  return { row, ...DEFAULT_SYNC_SETTINGS, ...(row ?? {}) };
+  const settings = { row, ...DEFAULT_SYNC_SETTINGS, ...(row ?? {}) };
+  // Older deployments stored 20–80%: anything above the cap reads as the default.
+  if (settings.conflictRate > MAX_CONFLICT_RATE) settings.conflictRate = DEFAULT_SYNC_SETTINGS.conflictRate;
+  return settings;
 }
 
 async function requireRead(ctx: QueryCtx | MutationCtx, propertyId: Id<'properties'>) {
@@ -233,6 +239,7 @@ export const feedOverview = query({
         unitId: unit._id,
         name: unit.name,
         slug: unit.slug,
+        exportUrl: exportFeedUrl(unit.icalExportToken),
         feeds: unit.icalImports
           .filter((imp) => !imp.url.startsWith('upload:'))
           .map((imp) => {
@@ -307,7 +314,7 @@ export const updateSettings = mutation({
     const invalid = alertEmails.find((e) => !EMAIL_RE.test(e));
     if (invalid) throw new ConvexError({ code: 'INVALID_EMAIL', message: `Email không hợp lệ: ${invalid}` });
     if (alertEmails.length > 10) throw new ConvexError({ code: 'TOO_MANY_EMAILS', message: 'Tối đa 10 email nhận cảnh báo.' });
-    if (!(args.conflictRate >= 0 && args.conflictRate <= 1)) throw new ConvexError({ code: 'INVALID_RATE', message: 'Tỉ lệ xung đột phải từ 0 đến 1.' });
+    if (!(args.conflictRate >= 0 && args.conflictRate <= MAX_CONFLICT_RATE)) throw new ConvexError({ code: 'INVALID_RATE', message: 'Tỉ lệ đặt phòng gây trùng lịch phải từ 0% đến 10%.' });
     const { row } = await loadSyncSettings(ctx, args.propertyId);
     const next = { alertEmails, randomizerEnabled: args.randomizerEnabled, conflictRate: args.conflictRate };
     if (row) await ctx.db.patch(row._id, next);

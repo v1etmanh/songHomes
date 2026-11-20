@@ -3,13 +3,18 @@ import { internalAction, internalMutation, internalQuery } from './_generated/se
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { BookingEmailData } from './emailTemplates';
-import { renderBookingMessage, renderCancellation, renderConfirmation, renderConsensusReceiptReady, renderManualRefundCompleted, renderManualRefundRequired, renderPaymentConflict } from './emailTemplates';
+import { renderBookingMessage, renderCancellation, renderConfirmation, renderConsensusReceiptReady, renderManualRefundCompleted, renderManualRefundRequired, renderPaymentConflict, renderSongConfirmed, renderSongRequestReceived, renderSongResidenceComplete } from './emailTemplates';
 
 /** getEmailContext's return shape: template data + delivery-only fields. */
 export type EmailContext = BookingEmailData & {
   propertyId: Id<'properties'>;
   guestEmail: string;
   refundCents: number;
+  propertySlug: string;
+  /** Guest page where residence declarations are filed. */
+  residenceUrl: string;
+  /** Adults who must be declared (0 when the property doesn't require it). */
+  residenceRequired: number;
 };
 
 export type EmailProvider = 'resend' | 'mail_bridge' | 'log_only';
@@ -98,6 +103,8 @@ export const sendBookingEmail = internalAction({
       v.literal('cancellation'),
       v.literal('payment_conflict'),
       v.literal('consensus_receipt'),
+      v.literal('request_received'),
+      v.literal('residence_complete'),
     ),
     // Cancellation only: the policy-computed refund amount, passed by
     // cancelByGuest. For stripe/square the refunds[] row is written only AFTER
@@ -129,8 +136,13 @@ export const sendBookingEmail = internalAction({
     }
 
     let rendered;
-    if (args.kind === 'confirmation') {
-      rendered = renderConfirmation(context);
+    const song = context.propertySlug === 'song-homestay';
+    if (args.kind === 'request_received') {
+      rendered = renderSongRequestReceived(context);
+    } else if (args.kind === 'residence_complete') {
+      rendered = renderSongResidenceComplete(context);
+    } else if (args.kind === 'confirmation') {
+      rendered = song ? renderSongConfirmed(context) : renderConfirmation(context);
     } else if (args.kind === 'consensus_receipt') {
       if (!args.receiptId || !args.receiptSha256) return;
       rendered = renderConsensusReceiptReady({ ...context, receiptId: args.receiptId, receiptSha256: args.receiptSha256 });
@@ -512,7 +524,7 @@ async function retryOrFail(
         fn: typeof internal.email.sendBookingEmail,
         args: {
           bookingId: Id<'bookings'>;
-          kind: 'confirmation' | 'cancellation' | 'payment_conflict' | 'consensus_receipt';
+          kind: 'confirmation' | 'cancellation' | 'payment_conflict' | 'consensus_receipt' | 'request_received' | 'residence_complete';
           refundCents?: number;
           receiptId?: string;
           receiptSha256?: string;
@@ -524,7 +536,7 @@ async function retryOrFail(
   logId: Id<'emailLog'>,
   args: {
     bookingId: Id<'bookings'>;
-    kind: 'confirmation' | 'cancellation' | 'payment_conflict' | 'consensus_receipt';
+    kind: 'confirmation' | 'cancellation' | 'payment_conflict' | 'consensus_receipt' | 'request_received' | 'residence_complete';
     refundCents?: number;
     receiptId?: string;
     receiptSha256?: string;
@@ -642,6 +654,9 @@ export const getEmailContext = internalQuery({
       balanceDueCents,
       refundCents,
       manageUrl,
+      propertySlug: property.slug,
+      residenceUrl: `${siteUrl}/tai-khoan/luu-tru/${booking._id}`,
+      residenceRequired: property.requireResidenceDeclaration ? booking.adults : 0,
     };
   },
 });

@@ -73,7 +73,7 @@ describe('iCal sync alerts', () => {
     const t = convexTest(schema, modules);
     const fx = await seedUnit(t);
     await t.mutation((api as any).icalAlerts.updateSettings, {
-      propertyId: fx.propertyId, alertEmails: ['A@Example.com', 'b@example.com'], randomizerEnabled: true, conflictRate: 0.35,
+      propertyId: fx.propertyId, alertEmails: ['A@Example.com', 'b@example.com'], randomizerEnabled: true, conflictRate: 0.05,
     });
     await t.run(async (ctx) => {
       const now = Date.now();
@@ -108,7 +108,7 @@ describe('iCal sync alerts', () => {
     const t = convexTest(schema, modules);
     const fx = await seedUnit(t);
     await expect(t.mutation((api as any).icalAlerts.updateSettings, {
-      propertyId: fx.propertyId, alertEmails: ['not-an-email'], randomizerEnabled: true, conflictRate: 0.3,
+      propertyId: fx.propertyId, alertEmails: ['not-an-email'], randomizerEnabled: true, conflictRate: 0.05,
     })).rejects.toThrow(/INVALID_EMAIL|không hợp lệ/);
     await expect(t.mutation((api as any).icalAlerts.updateSettings, {
       propertyId: fx.propertyId, alertEmails: [], randomizerEnabled: true, conflictRate: 2,

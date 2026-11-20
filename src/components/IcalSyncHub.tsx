@@ -116,7 +116,10 @@ export function IcalSyncHub({ propertyId, manualImport }: { propertyId: Id<'prop
                 const feeds = unit.feeds.length ? unit.feeds : [null];
                 return feeds.map((feed, index) => {
                   const first = index === 0;
-                  const nameCell = first ? <td rowSpan={feeds.length} className="min-w-52 border-r border-slate-100 p-3 align-top font-bold text-[#10234a] !whitespace-normal">{unit.name}</td> : null;
+                  const nameCell = first ? <td rowSpan={feeds.length} className="min-w-52 border-r border-slate-100 p-3 align-top font-bold text-[#10234a] !whitespace-normal">{unit.name}
+                    {/* OpenStays → OTA: each platform pulls this link, so a new booking here blocks the night there on its next import. */}
+                    <button type="button" className="mt-1 flex items-center gap-1 text-xs font-semibold text-[#1565a8] hover:underline" title={unit.exportUrl} onClick={() => void navigator.clipboard?.writeText(unit.exportUrl)}><Copy className="h-3 w-3" />Copy link iCal xuất</button>
+                  </td> : null;
                   if (!feed) return <tr key={`${unit.unitId}:none`} className="border-t border-slate-100">{nameCell}<td colSpan={5} className="p-3 text-slate-400">Chưa có link iCal.</td></tr>;
                   const listing = listingForUrl(feed.url);
                   const platform = PLATFORM_BY_LABEL[feed.label];
@@ -171,7 +174,23 @@ export function IcalSyncHub({ propertyId, manualImport }: { propertyId: Id<'prop
   );
 }
 
-function SyncHistory({ runs }: { runs: Array<{ _id: string; ts: number; unitName: string; label: string; trigger: string; ok: boolean; inserted: number; updated: number; removed: number; newConflicts?: number; error?: string }> }) {
+/** Lists start collapsed to this many rows; "Xem thêm" shows the rest (WEBSITE.pdf r5). */
+const COLLAPSED_ROWS = 5;
+
+function MoreToggle({ total, open, onToggle }: { total: number; open: boolean; onToggle: () => void }) {
+  if (total <= COLLAPSED_ROWS) return null;
+  return (
+    <div className="border-t border-slate-100 pt-3 text-center">
+      <button type="button" className="text-sm font-bold text-[#1565a8] hover:underline" onClick={onToggle}>
+        {open ? 'Thu gọn' : `Xem thêm (${total - COLLAPSED_ROWS})`}
+      </button>
+    </div>
+  );
+}
+
+function SyncHistory({ runs: allRuns }: { runs: Array<{ _id: string; ts: number; unitName: string; label: string; trigger: string; ok: boolean; inserted: number; updated: number; removed: number; newConflicts?: number; error?: string }> }) {
+  const [open, setOpen] = useState(false);
+  const runs = open ? allRuns : allRuns.slice(0, COLLAPSED_ROWS);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
@@ -193,6 +212,7 @@ function SyncHistory({ runs }: { runs: Array<{ _id: string; ts: number; unitName
           {!runs.length ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Chưa có lần đồng bộ nào.</td></tr> : null}
         </tbody>
       </table>
+      <MoreToggle total={allRuns.length} open={open} onToggle={() => setOpen(!open)} />
     </div>
   );
 }
@@ -207,7 +227,9 @@ function AlertInbox({ propertyId }: { propertyId: Id<'properties'> }) {
   const inbox = useQuery(api.icalAlerts.inbox, { propertyId });
   const markRead = useMutation(api.icalAlerts.markRead);
   const markAllRead = useMutation(api.icalAlerts.markAllRead);
+  const [open, setOpen] = useState(false);
   if (inbox === undefined) return <Spinner label="Đang tải hộp thư…" />;
+  const alerts = open ? inbox.alerts : inbox.alerts.slice(0, COLLAPSED_ROWS);
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
@@ -216,7 +238,7 @@ function AlertInbox({ propertyId }: { propertyId: Id<'properties'> }) {
       </div>
       <p className="mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">Mỗi cảnh báo cũng được gửi email tới danh sách nhân viên bên cạnh. Trên bản demo, email chỉ được ghi log; nội dung dưới đây đúng là email sẽ gửi đi.</p>
       <ul className="divide-y divide-slate-100">
-        {inbox.alerts.map((alert) => {
+        {alerts.map((alert) => {
           const style = KIND_STYLE[alert.kind];
           const unread = alert.readAt === undefined;
           return (
@@ -240,6 +262,7 @@ function AlertInbox({ propertyId }: { propertyId: Id<'properties'> }) {
         })}
         {!inbox.alerts.length ? <li className="p-8 text-center text-sm text-slate-400">Chưa có cảnh báo nào.</li> : null}
       </ul>
+      <MoreToggle total={inbox.alerts.length} open={open} onToggle={() => setOpen(!open)} />
     </section>
   );
 }
@@ -274,7 +297,7 @@ function AlertSettingsForm({ propertyId, settings }: {
       <label className="mt-3 block">
         <span className="field-label">Tỉ lệ đặt phòng giả lập gây trùng lịch</span>
         <select className="field-input" value={rate} onChange={(e) => setRate(e.target.value)}>
-          {[0, 0.2, 0.35, 0.5, 0.8].map((value) => <option key={value} value={value}>{Math.round(value * 100)}%</option>)}
+          {[0, 0.05, 0.1].map((value) => <option key={value} value={value}>{Math.round(value * 100)}%</option>)}
         </select>
       </label>
       {settings.lastRandomizedOn ? <p className="mt-2 text-xs text-slate-500">Lần tự sinh gần nhất: {shortDate(settings.lastRandomizedOn)}</p> : null}

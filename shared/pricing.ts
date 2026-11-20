@@ -45,6 +45,41 @@ export interface AddOnLine {
   unitPriceCents: number;
   quantity: number;
   taxable: boolean;
+  /** Units of this line given free (stay-length perk). Never exceeds quantity. */
+  freeQuantity?: number;
+}
+
+/** Billable units of an add-on line: quantity minus its free units, never negative. */
+export function billableQuantity(line: Pick<AddOnLine, 'quantity' | 'freeQuantity'>): number {
+  return Math.max(0, line.quantity - Math.max(0, line.freeQuantity ?? 0));
+}
+
+/** Cents charged for an add-on line (integer cents). */
+export function addOnLineCents(line: Pick<AddOnLine, 'unitPriceCents' | 'quantity' | 'freeQuantity'>): number {
+  return line.unitPriceCents * billableQuantity(line);
+}
+
+/**
+ * Stay-length perk: add-ons flagged with `freeFirstUnitMinNights` give ONE
+ * unit free per booking (across all flagged lines) once the stay reaches that
+ * many nights — e.g. Sóng's airport pickup leg for stays of 3+ nights. The
+ * most expensive eligible unit is the free one. Pure and shared so the client
+ * preview and createHold agree; the server always recomputes it.
+ * Returns freeQuantity per input index.
+ */
+export function stayPerkFreeUnits(
+  lines: Array<{ unitPriceCents: number; quantity: number; freeFirstUnitMinNights?: number }>,
+  nights: number,
+): number[] {
+  const free = lines.map(() => 0);
+  let best = -1;
+  lines.forEach((line, index) => {
+    const min = line.freeFirstUnitMinNights;
+    if (min === undefined || min < 1 || nights < min || line.quantity < 1) return;
+    if (best < 0 || line.unitPriceCents > lines[best].unitPriceCents) best = index;
+  });
+  if (best >= 0) free[best] = 1;
+  return free;
 }
 
 export interface PromoLike {
@@ -244,10 +279,10 @@ export function computePrice(input: ComputePriceInput): PriceBreakdown {
 
   const taxableAddOns = input.addOns
     .filter((a) => a.taxable)
-    .reduce((sum, a) => sum + a.unitPriceCents * a.quantity, 0);
+    .reduce((sum, a) => sum + addOnLineCents(a), 0);
   const nonTaxableAddOns = input.addOns
     .filter((a) => !a.taxable)
-    .reduce((sum, a) => sum + a.unitPriceCents * a.quantity, 0);
+    .reduce((sum, a) => sum + addOnLineCents(a), 0);
   const addOnSubtotalCents = taxableAddOns + nonTaxableAddOns;
 
   const preDiscountSubtotal = nightlySubtotalCents + addOnSubtotalCents;

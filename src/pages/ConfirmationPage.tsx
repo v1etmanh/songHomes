@@ -165,14 +165,15 @@ function ResidenceReminder({ confirmationCode }: { confirmationCode: string }) {
   const { isAuthenticated } = useConvexAuth();
   const mine = useQuery(api.guestAccount.myBookings, isAuthenticated ? {} : 'skip');
   const row = mine?.find((b) => b.confirmationCode === confirmationCode);
-  if (!row || row.progress.required === 0) return null;
+  // Declaration opens only after staff confirmed the booking.
+  if (!row || row.progress.required === 0 || !['confirmed', 'checked_in'].includes(row.status)) return null;
   if (row.progress.missing === 0) {
     return <p className="mt-4 rounded-xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">Đã khai báo lưu trú đủ cho tất cả người lớn.</p>;
   }
   return (
     <div className="mt-4 rounded-xl border border-sky-300 bg-sky-50 px-4 py-4 text-left text-sm text-sky-900">
       <p className="flex items-center gap-2 font-bold"><BellRing className="h-4 w-4" />Bắt buộc: khai báo lưu trú</p>
-      <p className="mt-1">Cần thông báo lưu trú cho {row.progress.missing} người lớn trước khi nhận phòng (họ tên, số định danh / CMND / hộ chiếu, lý do và thời gian lưu trú). Lễ tân không thể check-in khi còn thiếu.</p>
+      <p className="mt-1">Cần thông báo lưu trú cho {row.progress.missing} người lớn trước khi nhận phòng (họ tên, số định danh / CMND / hộ chiếu, lý do và thời gian lưu trú). Lễ tân sẽ hỗ trợ nếu bạn cần.</p>
       <Link to={`/tai-khoan/luu-tru/${row.bookingId}`} className="btn-primary mt-3 inline-flex">Khai báo ngay</Link>
     </div>
   );

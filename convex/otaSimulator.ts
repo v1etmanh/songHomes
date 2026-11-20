@@ -6,6 +6,7 @@ import { addDays, enumerateNights, todayInTimezone } from '../shared/pricing';
 import { renderIcs } from '../shared/ical';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 import { loadSyncSettings } from './icalAlerts';
+import { EXPORTABLE, exportFeedUrl } from './ical';
 
 // Demo-only simulated booking platforms. Each (unit, platform) listing serves
 // an iCal feed at <CONVEX_SITE_URL>/sim/ical/<token>.ics; OpenStays pulls it
@@ -343,6 +344,14 @@ export const platformView = query({
       const reservations = (await reservationsFor(ctx, listing._id))
         .filter((r) => r.checkOut >= addDays(today, -7))
         .sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1));
+      // What this platform imports from the unit's OpenStays export feed: every
+      // OpenStays booking shows as "Not available" here as soon as it exists.
+      const fromOpenStays = (await ctx.db
+        .query('bookings')
+        .withIndex('by_unit_checkIn', (q) => q.eq('unitId', unit._id).gte('checkIn', addDays(today, -7)))
+        .collect())
+        .filter((b) => EXPORTABLE.has(b.status))
+        .map((b) => ({ checkIn: b.checkIn, checkOut: b.checkOut, code: b.confirmationCode }));
       rows.push({
         listingId: listing._id,
         active: listing.active,
@@ -351,6 +360,8 @@ export const platformView = query({
         sortOrder: unit.sortOrder,
         photoUrl: unitType?.photoUrls?.[0] ?? null,
         feedUrl: feedUrl(listing.feedToken),
+        openStaysFeedUrl: exportFeedUrl(unit.icalExportToken),
+        fromOpenStays,
         reservations: reservations.map((r) => ({
           reservationId: r._id, uid: r.uid, checkIn: r.checkIn, checkOut: r.checkOut, guestLabel: r.guestLabel, status: r.status, origin: r.origin,
         })),

@@ -1017,6 +1017,9 @@ export default defineSchema({
     appliesTo: v.array(v.id('unitTypes')), // empty = all
     active: v.boolean(),
     sortOrder: v.number(),
+    // Stay-length perk: one unit free per booking once the stay reaches this
+    // many nights (shared/pricing.ts stayPerkFreeUnits). Server-computed only.
+    freeFirstUnitMinNights: v.optional(v.number()),
   }).index('by_property', ['propertyId', 'active']),
 
   bookingAddOns: defineTable({
@@ -1026,6 +1029,8 @@ export default defineSchema({
     nameSnapshot: v.string(), // price/name frozen at sale time
     unitPriceCents: v.number(),
     quantity: v.number(),
+    // Units given free at sale time (stay-length perk); billed = quantity − freeQuantity.
+    freeQuantity: v.optional(v.number()),
     taxable: v.boolean(),
     soldAt: v.number(),
     soldBy: v.optional(v.string()),
@@ -1298,6 +1303,25 @@ export default defineSchema({
     newConflicts: v.number(),
     ts: v.number(),
   }).index('by_property_ts', ['propertyId', 'ts']),
+
+  // Append-only log of handled double bookings: the "Đã xử lý" tab of the
+  // conflicts page shows how each one was resolved and by whom.
+  conflictResolutions: defineTable({
+    propertyId: v.id('properties'),
+    unitId: v.id('units'),
+    unitName: v.string(),
+    overlapStart: v.string(),
+    overlapEnd: v.string(),
+    bookingId: v.id('bookings'),
+    bookingCode: v.string(),
+    otherBookingId: v.optional(v.id('bookings')),
+    otherBookingCode: v.optional(v.string()),
+    method: v.union(v.literal('move_unit'), v.literal('cancel_booking'), v.literal('acknowledge')),
+    detail: v.string(),
+    note: v.optional(v.string()),
+    byName: v.string(),
+    at: v.number(),
+  }).index('by_property_at', ['propertyId', 'at']),
 
   // Staff-facing iCal alerts; each one is also handed to email.sendStaffAlert.
   icalSyncAlerts: defineTable({

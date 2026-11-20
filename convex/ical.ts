@@ -2,7 +2,17 @@ import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
 import { renderIcs } from '../shared/ical';
 
-const EXPORTABLE = new Set(['confirmed', 'checked_in', 'blocked']);
+// Every status that occupies unitNights is exported, so an OTA that pulls this
+// feed blocks the night as soon as OpenStays takes a booking — including a
+// pending Sóng request, which already locks the calendar. Imported OTA stays
+// ('external') are never re-exported (loop prevention).
+export const EXPORTABLE = new Set(['pending', 'confirmed', 'checked_in', 'blocked']);
+
+/** The per-unit export URL an OTA subscribes to (GET /ical/u/<token>.ics). */
+export function exportFeedUrl(token: string): string {
+  const site = (process.env.CONVEX_SITE_URL ?? '').replace(/\/$/, '');
+  return `${site}/ical/u/${token}.ics`;
+}
 
 /**
  * Build the iCal feed body for a unit identified by its secret export token.

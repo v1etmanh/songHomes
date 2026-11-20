@@ -293,9 +293,12 @@ export function ResidenceDesk({
                     </td>
                     <td>
                       {row.canReveal && (
-                        <button type="button" className={secondaryAction} onClick={() => setStatusRow(row)}>
-                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Cập nhật
-                        </button>
+                        <span className="inline-flex gap-1.5">
+                          {!row.temporaryResidenceDeclared ? <MarkDeclaredButton registrationId={row._id} /> : null}
+                          <button type="button" className={secondaryAction} onClick={() => setStatusRow(row)}>
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Cập nhật
+                          </button>
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -645,5 +648,21 @@ function RegistrationForm({
         </div>
       </form>
     </dialog>
+  );
+}
+
+/** One click once the tạm trú has been filed with the authorities (WEBSITE.pdf r5). */
+function MarkDeclaredButton({ registrationId }: { registrationId: Id<'residenceRegistrations'> }) {
+  const save = useMutation(api.residence.setTemporaryResidenceDeclared);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <>
+      <button type="button" disabled={busy} title={error || undefined} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#0b2e4f] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#1565a8] disabled:opacity-60"
+        onClick={() => { setBusy(true); setError(''); save({ registrationId, declared: true }).catch((e) => { setError(extractErrorMessage(e)); setBusy(false); }); }}>
+        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{busy ? 'Đang lưu…' : 'Đã khai báo'}
+      </button>
+      {error ? <span role="alert" className="text-xs text-red-700">{error}</span> : null}
+    </>
   );
 }

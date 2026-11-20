@@ -3,6 +3,7 @@ import { daysBetween, isIsoDate } from '../shared/pricing';
 import { ConvexError, v } from 'convex/values';
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { internalMutation, mutation, query } from './_generated/server';
+import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
@@ -48,14 +49,30 @@ export async function residenceProgress(ctx: QueryCtx | MutationCtx, booking: Do
   return { required, declared, missing: Math.max(0, required - declared) };
 }
 
-/** Check-in gate shared by every mutation that moves a booking to checked_in. */
-export async function assertResidenceComplete(ctx: MutationCtx, booking: Doc<'bookings'>) {
-  const { missing } = await residenceProgress(ctx, booking);
-  if (missing > 0) {
-    throw new ConvexError({
-      code: 'RESIDENCE_INCOMPLETE',
-      message: `Còn thiếu ${missing} tờ khai lưu trú. Khách cần khai báo đủ trước khi nhận phòng.`,
-    });
+/**
+ * When a new declaration completes the booking (every adult declared), email
+ * the guest once. sendBookingEmail is idempotent per (booking, template), so a
+ * withdraw-and-redeclare never sends twice.
+ */
+async function notifyIfDeclarationComplete(ctx: MutationCtx, bookingId: Id<'bookings'>) {
+  const booking = await ctx.db.get(bookingId);
+  if (!booking) return;
+  const progress = await residenceProgress(ctx, booking);
+  if (progress.required > 0 && progress.missing === 0) {
+    await ctx.scheduler.runAfter(0, internal.email.sendBookingEmail, { bookingId, kind: 'residence_complete' });
+  }
+}
+
+/**
+ * Guests declare only after staff confirmed the booking (WEBSITE.pdf r5): a
+ * pending request may still be declined, so no identity data is taken yet.
+ */
+export function assertDeclarable(booking: Doc<'bookings'>) {
+  if (booking.status === 'hold' || booking.status === 'pending') {
+    throw new ConvexError({ code: 'BOOKING_NOT_CONFIRMED', message: 'Đơn đặt phòng chưa được xác nhận. Bạn có thể khai báo lưu trú sau khi Sóng xác nhận đơn.' });
+  }
+  if (!['confirmed', 'checked_in'].includes(booking.status)) {
+    throw new ConvexError({ code: 'BOOKING_NOT_ACTIVE', message: 'Đơn đặt phòng này không còn hiệu lực để khai báo.' });
   }
 }
 
@@ -153,6 +170,7 @@ export const registerForGuest = mutation({
   },
   handler: async (ctx, args) => {
     const { booking } = await requireGuestBooking(ctx, args.confirmationCode, args.email);
+    if (['hold', 'pending'].includes(booking.status)) assertDeclarable(booking);
     if (booking.status === 'cancelled') {
       throw new ConvexError({
         code: 'BOOKING_CANCELLED',
@@ -205,6 +223,7 @@ export const registerForGuest = mutation({
       updatedAt: now,
     });
 
+    await notifyIfDeclarationComplete(ctx, booking._id);
     return { registrationId };
   },
 });
@@ -273,9 +292,7 @@ export const registerForMyBooking = mutation({
   },
   handler: async (ctx, args) => {
     const booking = await requireMyBooking(ctx, args.bookingId);
-    if (!['hold', 'pending', 'confirmed', 'checked_in'].includes(booking.status)) {
-      throw new ConvexError({ code: 'BOOKING_NOT_ACTIVE', message: 'Đơn đặt phòng này không còn hiệu lực để khai báo.' });
-    }
+    assertDeclarable(booking);
     const fullName = args.fullName.trim().replace(/\s+/g, ' ');
     if (fullName.length < 2 || fullName.length > 100) {
       throw new ConvexError({ code: 'FULL_NAME_REQUIRED', message: 'Vui lòng nhập đầy đủ họ và tên.' });
@@ -328,6 +345,7 @@ export const registerForMyBooking = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await notifyIfDeclarationComplete(ctx, booking._id);
     return { registrationId };
   },
 });
@@ -589,9 +607,11 @@ export const staffRegister = mutation({
     // Each adult is declared under their own name; reusing the booker's name for a second adult is a data error.
     if (args.fullName === undefined && existing.some(r => r.registrationType === 'tam_tru' && r.fullName === bookerName)) throw new ConvexError('Nhập họ tên của khách cần khai báo.');
     const now = Date.now();
-    return ctx.db.insert('residenceRegistrations', {...args, notes: args.notes === undefined ? undefined : sanitizeText(args.notes, 400), recordCode:await nextCode(ctx,booking.propertyId,'TT',now), documentNumber: number, fullName,
+    const registrationId = await ctx.db.insert('residenceRegistrations', {...args, notes: args.notes === undefined ? undefined : sanitizeText(args.notes, 400), recordCode:await nextCode(ctx,booking.propertyId,'TT',now), documentNumber: number, fullName,
       propertyId: booking.propertyId, registrationType:'tam_tru', checkInDate:booking.checkIn, checkOutDate:booking.checkOut,
       stayAddress: await stayAddressFor(ctx, booking), status:'declared', submittedBy:'staff', createdAt:now, updatedAt:now, retentionUntil:now+RETENTION_MS});
+    await notifyIfDeclarationComplete(ctx, booking._id);
+    return registrationId;
   },
 });
 

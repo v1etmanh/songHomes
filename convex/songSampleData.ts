@@ -3,7 +3,7 @@ import { internalMutation } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { markPropertyDirtyInline } from './channel/ari';
-import { addDays, computePrice, enumerateNights, todayInTimezone } from '../shared/pricing';
+import { addDays, computePrice, enumerateNights, stayPerkFreeUnits, todayInTimezone } from '../shared/pricing';
 
 // Fictional review data for the Sóng Homestay admin screens. Every row it
 // creates is tagged (SMP- / EXT-SMP codes, a marker note on guests and
@@ -255,15 +255,18 @@ export const run = internalMutation({
           const picks = new Set<number>();
           while (picks.size < Math.min(count, addOns.length)) picks.add(ri(0, addOns.length - 1));
           for (const index of picks) {
-            const quantity = index === 0 ? nights : index === 1 ? ri(1, 2) : adults;
+            // Bikes are rented per day of the stay; every other service is one leg / one request.
+            const quantity = addOns[index].name.startsWith('Thuê xe máy') ? nights : 1;
             lines.push({ addOn: addOns[index], quantity });
           }
         }
+        // Same stay-length perk as createHold (free pickup leg from 3 nights).
+        const perkFree = stayPerkFreeUnits(lines.map((l) => ({ unitPriceCents: l.addOn.priceCents, quantity: l.quantity, freeFirstUnitMinNights: l.addOn.freeFirstUnitMinNights })), nights);
         const price = computePrice({
           ratePlan,
           checkIn,
           checkOut,
-          addOns: lines.map((l) => ({ name: l.addOn.name, unitPriceCents: l.addOn.priceCents, quantity: l.quantity, taxable: l.addOn.taxable })),
+          addOns: lines.map((l, i) => ({ name: l.addOn.name, unitPriceCents: l.addOn.priceCents, quantity: l.quantity, taxable: l.addOn.taxable, freeQuantity: perkFree[i] })),
           taxRateBps: property.taxRateBps,
         });
 
@@ -305,10 +308,11 @@ export const run = internalMutation({
             await ctx.db.insert('unitNights', { unitId: unit._id, date, bookingId, kind: 'stay' });
           }
         }
-        for (const line of lines) {
+        for (const [i, line] of lines.entries()) {
           await ctx.db.insert('bookingAddOns', {
             bookingId, addOnId: line.addOn._id, nameSnapshot: line.addOn.name, unitPriceCents: line.addOn.priceCents,
             quantity: line.quantity, taxable: line.addOn.taxable, soldAt: createdAt + HOUR_MS, soldBy: 'sample-data',
+            ...(perkFree[i] ? { freeQuantity: perkFree[i] } : {}),
           });
           addOnRows += 1;
         }

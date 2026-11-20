@@ -5,12 +5,13 @@ import { Bath, BedDouble, LogIn, MapPin, Ruler, Users } from 'lucide-react';
 
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
-import { computePrice, enumerateNights, type RatePlanLike } from '../../shared/pricing';
+import { computePrice, enumerateNights, stayPerkFreeUnits, type RatePlanLike } from '../../shared/pricing';
 import { checkoutPath } from '../../shared/bookingLinks';
 import { Spinner } from '../components/Spinner';
 import { ErrorMessage, extractErrorMessage } from '../components/ErrorMessage';
 import { StayDateRangePicker } from '../components/StayDateRangePicker';
 import { AddOnPicker } from '../components/AddOnPicker';
+import { SongServicePicker, selectionQuantities, songTransport, type ServiceSelection } from '../components/song/SongServicePicker';
 import { GuestForm, type GuestFormValue } from '../components/GuestForm';
 import { PriceBreakdownView } from '../components/PriceBreakdownView';
 import { StayMedia } from '../components/StayMedia';
@@ -39,7 +40,14 @@ export function UnitTypePage() {
     checkIn: searchParams.get('checkIn') ?? undefined,
     checkOut: searchParams.get('checkOut') ?? undefined,
   });
-  const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
+  const [plainQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
+  // Sóng: motorbike / airport transfer picked through dialogs, merged into the add-on quantities.
+  const [services, setServices] = useState<ServiceSelection[]>([]);
+  const addOnQuantities = useMemo(() => {
+    const merged = { ...plainQuantities };
+    for (const [id, quantity] of Object.entries(selectionQuantities(services))) merged[id] = (merged[id] ?? 0) + quantity;
+    return merged;
+  }, [plainQuantities, services]);
   const [guest, setGuest] = useState<GuestFormValue>({
     name: '',
     email: '',
@@ -117,15 +125,21 @@ export function UnitTypePage() {
 
   const addOnLines = useMemo(() => {
     if (!detail) return [];
-    return detail.addOns
-      .filter((a) => (addOnQuantities[a.addOnId] ?? 0) > 0)
-      .map((a) => ({
-        name: a.name,
-        unitPriceCents: a.priceCents,
-        quantity: addOnQuantities[a.addOnId],
-        taxable: a.taxable,
-      }));
-  }, [detail, addOnQuantities]);
+    const picked = detail.addOns.filter((a) => (addOnQuantities[a.addOnId] ?? 0) > 0);
+    // Preview of the server's stay-length perk (createHold recomputes it).
+    const stayNights = range.checkIn && range.checkOut ? enumerateNights(range.checkIn, range.checkOut).length : 0;
+    const free = stayPerkFreeUnits(
+      picked.map((a) => ({ unitPriceCents: a.priceCents, quantity: addOnQuantities[a.addOnId], freeFirstUnitMinNights: a.freeFirstUnitMinNights })),
+      stayNights,
+    );
+    return picked.map((a, index) => ({
+      name: a.name,
+      unitPriceCents: a.priceCents,
+      quantity: addOnQuantities[a.addOnId],
+      taxable: a.taxable,
+      freeQuantity: free[index],
+    }));
+  }, [detail, addOnQuantities, range]);
 
   // Base price (no promo) is needed to check min-spend before applying the
   // promo in the preview. Server-side createHold re-validates everything.
@@ -177,6 +191,10 @@ export function UnitTypePage() {
   const price = stayPrice({ fromPriceCents, longStay: unitType.longStay, monthlyPriceCents: unitType.monthlyPriceCents }, detail.property.currency);
 
   const nights = range.checkIn && range.checkOut ? enumerateNights(range.checkIn, range.checkOut).length : 0;
+  const isSong = detail.property.slug === 'song-homestay';
+  const transport = songTransport(addOns);
+  const transportIds = new Set([transport.bike, ...transport.cars.flatMap((c) => [c.pickup, c.dropoff])].filter(Boolean).map((a) => a!.addOnId));
+  const otherAddOns = addOns.filter((a) => !transportIds.has(a.addOnId));
   const defaultPromoPlaceholder = detail.property.slug === 'consensus-commons' ? 'CONSENSUS10' : 'WELCOME10';
   const promoPlaceholder = detail.property.slug === 'song-homestay' ? 'SONGDANANG10' : defaultPromoPlaceholder;
 
@@ -217,6 +235,7 @@ export function UnitTypePage() {
           .filter(([, quantity]) => quantity > 0)
           .map(([addOnId, quantity]) => ({ addOnId: addOnId as Id<'addOns'>, quantity })),
         promoCode: promoActive && appliedPromo ? appliedPromo : undefined,
+        serviceNote: services.length ? services.map((s) => `${s.title}: ${s.detail}`).join(' | ') : undefined,
       });
       navigate(checkoutPath(result.bookingId, result.confirmationCode));
     } catch (error) {
@@ -270,8 +289,11 @@ export function UnitTypePage() {
           </div>
 
             <div className="card p-6">
+              {isSong ? (
+                <SongServicePicker addOns={addOns} nights={nights} currency={detail.property.currency} selections={services} onChange={setServices} />
+              ) : null}
               <AddOnPicker
-                addOns={addOns}
+                addOns={isSong ? otherAddOns : addOns}
                 currency={detail.property.currency}
                 selected={addOnQuantities}
                 onChange={(addOnId, quantity) =>

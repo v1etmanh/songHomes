@@ -295,3 +295,80 @@ export function renderManualRefundCompleted(
   ].join(''));
   return { subject, html, text };
 }
+
+// ---------------------------------------------------------------------------
+// Sóng Homestay (Vietnamese) guest notices — WEBSITE.pdf round 5: the guest
+// hears from Sóng when the request arrives, when staff confirm it (with the
+// residence-declaration prompt) and when every adult has been declared.
+// ---------------------------------------------------------------------------
+
+export type SongEmailData = BookingEmailData & { residenceUrl: string; residenceRequired: number };
+
+function viDate(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : isoDate;
+}
+
+function songDetails(data: BookingEmailData): Array<[string, string]> {
+  return [
+    ['Mã đặt phòng', data.confirmationCode],
+    ['Chỗ nghỉ', data.unitTypeName],
+    ['Nhận phòng', viDate(data.checkIn)],
+    ['Trả phòng', viDate(data.checkOut)],
+    ['Số đêm', String(data.nights)],
+    ['Tổng cộng', formatMoney(data.totalCents, data.currency)],
+  ];
+}
+
+function songEmail(data: BookingEmailData, subject: string, paragraphs: string[], button?: { label: string; url: string }): RenderedEmail {
+  const rows = songDetails(data)
+    .map(([label, value]) => `<tr><td style="padding:6px 0;color:#6b7280;">${escapeHtml(label)}</td><td style="padding:6px 0;text-align:right;font-weight:bold;">${escapeHtml(value)}</td></tr>`)
+    .join('');
+  const html = wrapHtml(data, [
+    `<p style="margin:0 0 12px;">Chào ${escapeHtml(data.guestName)},</p>`,
+    ...paragraphs.map((p) => `<p style="margin:0 0 12px;">${escapeHtml(p)}</p>`),
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;">${rows}</table>`,
+    button ? `<p style="margin:24px 0;"><a href="${escapeHtml(button.url)}" style="background-color:#0b2e4f;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:999px;display:inline-block;font-weight:bold;">${escapeHtml(button.label)}</a></p>` : '',
+    `<p style="margin:16px 0 0;">Hẹn gặp bạn tại ${escapeHtml(data.propertyName)}!</p>`,
+  ].join(''));
+  const text = [
+    `Chào ${data.guestName},`,
+    '',
+    ...paragraphs,
+    '',
+    ...songDetails(data).map(([label, value]) => `${label}: ${value}`),
+    ...(button ? ['', `${button.label}: ${button.url}`] : []),
+    '',
+    `Hẹn gặp bạn tại ${data.propertyName}!`,
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/** Request submitted, waiting for staff (status pending). */
+export function renderSongRequestReceived(data: SongEmailData): RenderedEmail {
+  return songEmail(data, `Đã nhận yêu cầu đặt phòng — ${data.confirmationCode}`, [
+    'Sóng Homestay đã nhận yêu cầu đặt phòng của bạn và đang giữ lịch. Nhân viên sẽ liên hệ để xác nhận trong thời gian sớm nhất.',
+    'Bạn chưa cần thanh toán trực tuyến. Sau khi đơn được xác nhận, bạn sẽ nhận email và thông báo để khai báo lưu trú.',
+  ]);
+}
+
+/** Staff confirmed the booking: guest may now declare residence. */
+export function renderSongConfirmed(data: SongEmailData): RenderedEmail {
+  const paragraphs = ['Đơn đặt phòng của bạn đã được Sóng Homestay xác nhận.'];
+  if (data.residenceRequired > 0) {
+    paragraphs.push(`Vui lòng bổ sung thông tin lưu trú cho ${data.residenceRequired} người lớn (họ tên, số định danh / CMND / hộ chiếu, lý do và thời gian lưu trú) trước khi nhận phòng.`);
+  }
+  return songEmail(
+    data,
+    `Đặt phòng đã được xác nhận — ${data.confirmationCode}`,
+    paragraphs,
+    data.residenceRequired > 0 ? { label: 'Khai báo lưu trú', url: data.residenceUrl } : undefined,
+  );
+}
+
+/** Every adult on the booking has been declared. */
+export function renderSongResidenceComplete(data: SongEmailData): RenderedEmail {
+  return songEmail(data, `Khai báo lưu trú thành công — ${data.confirmationCode}`, [
+    'Sóng Homestay đã nhận đủ thông tin lưu trú cho tất cả người lớn trong đơn của bạn. Lễ tân sẽ chuẩn bị sẵn để bạn nhận phòng nhanh chóng.',
+  ]);
+}

@@ -8,7 +8,9 @@ import { residenceProgress } from './residence';
 // Signed-in guest views (requireGuestAccount properties). An account only ever
 // sees bookings whose userId is its own; it grants no staff rights.
 
-const DECLARABLE = new Set(['pending', 'confirmed', 'checked_in']);
+// Declaration opens only once staff confirmed the booking (WEBSITE.pdf r5):
+// a pending request may still be declined, so no ID data is collected yet.
+const DECLARABLE = new Set(['confirmed', 'checked_in']);
 
 export const me = query({
   args: {},
@@ -65,8 +67,13 @@ export const pendingDeclarations = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) return { count: 0, bookingIds: [] as Id<'bookings'>[] };
+    if (!userId) return { count: 0, bookingIds: [] as Id<'bookings'>[], items: [] as Array<{ bookingId: Id<'bookings'>; confirmationCode: string; unitName: string; missing: number }> };
     const rows = (await myBookingRows(ctx, userId)).filter((row) => row.needsDeclaration);
-    return { count: rows.length, bookingIds: rows.map((row) => row.bookingId) };
+    return {
+      count: rows.length,
+      bookingIds: rows.map((row) => row.bookingId),
+      // Bell entries: each confirmed booking still waiting for its declarations.
+      items: rows.map((row) => ({ bookingId: row.bookingId, confirmationCode: row.confirmationCode, unitName: row.unitName, missing: row.progress.missing })),
+    };
   },
 });

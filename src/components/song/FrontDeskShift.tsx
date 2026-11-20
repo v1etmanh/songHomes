@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Circle, FileText, Globe, LogIn, LogOut, Plus, RefreshCw, Wrench } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Circle, Eye, FileText, Filter, Globe, LogIn, LogOut, NotebookPen, Plus, RefreshCw, Wrench } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -14,6 +14,7 @@ import { ConflictResolver } from '../ConflictResolver';
 import { extractErrorMessage } from '../ErrorMessage';
 import { ResidenceRegistrationDialog } from '../ResidenceDesk';
 import { Spinner } from '../Spinner';
+import { useStaffGate } from '../../lib/useStaff';
 
 /** One snapshot window shared by the shift dashboard and the notification bell (identical args = one subscription). */
 export function useShiftSnapshot(propertyId: Id<'properties'>, timezone: string) {
@@ -72,6 +73,12 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
   const [rowError, setRowError] = useState<{ code: string; text: string } | null>(null);
   const [conflictFor, setConflictFor] = useState<BookingRow | null>(null);
   const [declareFor, setDeclareFor] = useState<BookingRow | null>(null);
+  const [noteFor, setNoteFor] = useState<BookingRow | null>(null);
+  const [detailFor, setDetailFor] = useState<BookingRow | null>(null);
+  const staff = useStaffGate();
+  // "Chưa khai báo" filter lives in the URL with the panel (convention #12).
+  const onlyUndeclared = params.get('undeclared') === '1';
+  const setOnlyUndeclared = (value: boolean) => setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set('undeclared', '1'); else next.delete('undeclared'); return next; }, { replace: true });
 
   if (snapshot === undefined || services === undefined) return <Spinner label="Đang tổng hợp công việc trong ca…" />;
   const shift = shiftOverview(snapshot.bookings, today);
@@ -122,7 +129,8 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
           <div className="flex items-center gap-2"><strong className="text-[#10234a]">{row.guestName}</strong><span className="text-xs text-slate-500">{row.guestPhone}</span></div>
           <span className="text-right text-xs font-bold text-slate-600">{row.unitName}</span>
         </div>
-        <p className="text-xs text-slate-500">{row.confirmationCode} · {row.adults} người lớn{row.children ? `, ${row.children} trẻ em` : ''} · {stayRange(row.checkIn, row.checkOut)}</p>
+        <p className="text-xs text-slate-500">{row.confirmationCode} · {guestCount(row)} · {stayRange(row.checkIn, row.checkOut)}</p>
+        {lastNote(row) ? <p className="text-xs text-slate-600"><NotebookPen className="mr-1 inline h-3 w-3" />{lastNote(row)}</p> : null}
         {lines.length ? <p className="text-xs font-semibold text-slate-600">Dịch vụ: {lines.map((line) => `${line.name}${line.quantity > 1 ? ` ×${line.quantity}` : ''}${line.completed ? ' (xong)' : ''}`).join(' · ')}</p> : null}
         <div className="flex flex-wrap gap-2">
           {kind === 'in' && row.status === 'pending' ? <button type="button" className={`${actionButton} bg-[#0b2e4f] text-white hover:bg-[#1565a8]`} onClick={() => void transition(row, 'confirmed')}><CheckCircle2 className="h-3.5 w-3.5" />Xác nhận đơn</button> : null}
@@ -131,7 +139,9 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
           {kind === 'in' && row.status === 'checked_in' ? <span className={`${actionButton} bg-emerald-50 text-emerald-700`}><CheckCircle2 className="h-3.5 w-3.5" />Đã nhận phòng</span> : null}
           {kind === 'out' && row.status === 'checked_out' ? <span className={`${actionButton} bg-emerald-50 text-emerald-700`}><CheckCircle2 className="h-3.5 w-3.5" />Đã trả phòng</span> : null}
           {kind === 'out' && row.status === 'confirmed' ? <span className={`${actionButton} bg-slate-100 text-slate-600`}>Chưa nhận phòng</span> : null}
-          {(row.residenceMissing ?? 0) > 0 ? <button type="button" className={`${actionButton} border border-sky-200 bg-white text-[#1565a8] hover:bg-sky-50`} onClick={() => setDeclareFor(row)}><FileText className="h-3.5 w-3.5" />Khai báo tạm trú ({row.residenceMissing})</button> : null}
+          {(row.residenceMissing ?? 0) > 0 ? <button type="button" className={`${actionButton} border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100`} title="Khách vẫn được nhận phòng; lễ tân hỗ trợ khai báo" onClick={() => setDeclareFor(row)}><FileText className="h-3.5 w-3.5" />Chưa khai báo · hỗ trợ khai ({row.residenceMissing})</button> : kind === 'in' && row.adults > 0 ? <span className={`${actionButton} bg-emerald-50 text-emerald-700`}><CheckCircle2 className="h-3.5 w-3.5" />Đã khai báo tạm trú</span> : null}
+          <button type="button" className={`${actionButton} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`} onClick={() => setNoteFor(row)}><NotebookPen className="h-3.5 w-3.5" />Ghi chú</button>
+          <button type="button" className={`${actionButton} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`} onClick={() => setDetailFor(row)}><Eye className="h-3.5 w-3.5" />Xem chi tiết</button>
           {openLines.length ? <button type="button" disabled={busyCode === row.confirmationCode} className={`${actionButton} border border-teal-200 bg-white text-teal-800 hover:bg-teal-50`} onClick={() => void prepareServices(row, lines)}><Wrench className="h-3.5 w-3.5" />{busyCode === row.confirmationCode ? 'Đang cập nhật…' : 'Chuẩn bị dịch vụ'}</button> : lines.length ? <span className={`${actionButton} bg-emerald-50 text-emerald-700`}><CheckCircle2 className="h-3.5 w-3.5" />Đã xong dịch vụ</span> : null}
         </div>
         {error ? <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p> : null}
@@ -139,11 +149,21 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
     );
   }
 
+  const arrivals = onlyUndeclared ? shift.arrivals.filter((row) => (row.residenceMissing ?? 0) > 0) : shift.arrivals;
   const panelBody = panel === 'in' || panel === 'out' ? (
-    <ul className="divide-y divide-slate-100">
-      {(panel === 'in' ? shift.arrivals : shift.departures).map((row) => guestRow(row, panel))}
-      {!(panel === 'in' ? shift.arrivals : shift.departures).length ? <li className="px-5 py-8 text-center text-sm text-slate-500">{panel === 'in' ? 'Hôm nay không có khách nhận phòng.' : 'Hôm nay không có khách trả phòng.'}</li> : null}
-    </ul>
+    <>
+      {panel === 'in' ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-5 py-2.5 text-xs">
+          <Filter className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+          <button type="button" aria-pressed={!onlyUndeclared} onClick={() => setOnlyUndeclared(false)} className={`rounded-full px-3 py-1 font-bold ${!onlyUndeclared ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Tất cả ({shift.arrivals.length})</button>
+          <button type="button" aria-pressed={onlyUndeclared} onClick={() => setOnlyUndeclared(true)} className={`rounded-full px-3 py-1 font-bold ${onlyUndeclared ? 'bg-amber-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Chưa khai báo tạm trú ({shift.arrivals.filter((row) => (row.residenceMissing ?? 0) > 0).length})</button>
+        </div>
+      ) : null}
+      <ul className="divide-y divide-slate-100">
+        {(panel === 'in' ? arrivals : shift.departures).map((row) => guestRow(row, panel))}
+        {!(panel === 'in' ? arrivals : shift.departures).length ? <li className="px-5 py-8 text-center text-sm text-slate-500">{panel === 'in' ? (onlyUndeclared ? 'Mọi khách hôm nay đã khai báo.' : 'Hôm nay không có khách nhận phòng.') : 'Hôm nay không có khách trả phòng.'}</li> : null}
+      </ul>
+    </>
   ) : panel === 'conflicts' ? (
     shift.conflicts.length ? (
       <ul className="divide-y divide-slate-100">
@@ -179,6 +199,10 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
     <div className="space-y-5">
       {conflictFor && <Modal title={`Xử lý trùng lịch · ${conflictFor.confirmationCode}`} onClose={() => setConflictFor(null)}><ConflictResolver propertyId={propertyId} bookingId={conflictFor.bookingId} /></Modal>}
       {declareFor && <ResidenceRegistrationDialog propertyId={propertyId} bookingId={declareFor.bookingId} close={() => setDeclareFor(null)} />}
+      {noteFor && <Modal title={`Ghi chú lễ tân · ${noteFor.confirmationCode}`} onClose={() => setNoteFor(null)}><NoteForm propertyId={propertyId} row={noteFor} done={() => setNoteFor(null)} /></Modal>}
+      {detailFor && <Modal title={`Chi tiết booking · ${detailFor.confirmationCode}`} onClose={() => setDetailFor(null)}><BookingDetail row={detailFor} lines={servicesByCode.get(detailFor.confirmationCode) ?? []} timezone={timezone} /></Modal>}
+
+      <p className="text-sm font-semibold text-slate-600">Chào {staff.status === 'staff' ? staff.name : 'bạn'}, chúc bạn một ngày làm việc tốt lành!</p>
 
       <section className={`${card} flex flex-wrap items-center justify-between gap-3 px-5 py-3.5`} aria-label="Tác vụ nhanh">
         <p className="text-sm font-semibold text-slate-500">{lastSync ? <>Đồng bộ iCal gần nhất: <strong className="text-[#10234a]">{shortDateTime(lastSync, timezone)}</strong></> : 'Chưa có lần đồng bộ iCal nào.'}</p>
@@ -204,7 +228,7 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
           </div>
           {panelBody}
         </section>
-      ) : (
+      ) : null}
         <section className={card} aria-label="Checklist công việc trong ca">
           <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5 text-[#10234a]"><ClipboardCheck className="h-5 w-5" aria-hidden="true" /><h2 className="font-extrabold">Checklist công việc trong ca</h2></div>
           <ul className="divide-y divide-slate-100">
@@ -215,7 +239,61 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
             })}
           </ul>
         </section>
-      )}
+    </div>
+  );
+}
+
+function guestCount(row: BookingRow): string {
+  const total = row.adults + row.children + (row.infants ?? 0);
+  // OTA iCal imports carry no party size.
+  if (!total) return 'Số khách chưa rõ (OTA)';
+  const parts = [`${row.adults} người lớn`, row.children ? `${row.children} trẻ em` : '', row.infants ? `${row.infants} em bé` : ''].filter(Boolean).join(', ');
+  return `${total} khách (${parts})`;
+}
+
+/** Latest front-desk note, shown under the guest line. */
+function lastNote(row: BookingRow): string {
+  const notes = (row.notes ?? []).filter((note) => note.by.startsWith('Lễ tân'));
+  return notes.length ? notes[notes.length - 1].text : '';
+}
+
+function NoteForm({ propertyId, row, done }: { propertyId: Id<'properties'>; row: BookingRow; done: () => void }) {
+  const add = useMutation((api as any).songHomestay.addFrontDeskNote);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  // One request id per opened form: a double click or retry never writes twice.
+  const [requestId] = useState(() => `note-${row.bookingId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const notes = (row.notes ?? []).filter((note) => note.by.startsWith('Lễ tân') || note.by === 'Khách (dịch vụ)');
+  return (
+    <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); setBusy(true); setError(''); add({ propertyId, bookingId: row.bookingId, text, requestId }).then(done).catch((e: unknown) => { setError(extractErrorMessage(e)); setBusy(false); }); }}>
+      <p className="text-sm text-slate-600">{row.guestName} · {row.unitName} · {stayRange(row.checkIn, row.checkOut)}</p>
+      <label className="block"><span className="field-label">Nội dung ghi chú</span>
+        <textarea className="field-input min-h-24" required maxLength={500} value={text} onChange={(e) => setText(e.target.value)} placeholder="VD: khách hạ cánh 14:30, gửi hành lý lúc 11:00…" /></label>
+      {notes.length ? <ul className="space-y-1 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{notes.map((note) => <li key={note.ts}><strong>{note.by}:</strong> {note.text}</li>)}</ul> : null}
+      {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
+      <div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={done}>Hủy</button><button className="btn-primary" disabled={busy || !text.trim()}>{busy ? 'Đang lưu…' : 'Lưu ghi chú'}</button></div>
+    </form>
+  );
+}
+
+function BookingDetail({ row, lines, timezone }: { row: BookingRow; lines: ServiceLine[]; timezone: string }) {
+  const notes = (row.notes ?? []).filter((note) => !note.text.startsWith('Cập nhật trạng thái'));
+  return (
+    <div className="space-y-4 text-sm">
+      <dl className="grid gap-3 sm:grid-cols-2">
+        {[
+          ['Khách hàng', row.guestName], ['Số điện thoại', row.guestPhone || '—'], ['Email', row.guestEmail || '—'], ['Chỗ nghỉ', row.unitName],
+          ['Lưu trú', stayRange(row.checkIn, row.checkOut)], ['Số khách', guestCount(row)], ['Kênh', sourceLabel(row.source)],
+          ['Khai báo tạm trú', (row.residenceMissing ?? 0) > 0 ? `Còn thiếu ${row.residenceMissing} người lớn` : 'Đã đủ'],
+        ].map(([label, value]) => <div key={label}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="font-semibold text-[#10234a]">{value}</dd></div>)}
+      </dl>
+      <div><h3 className="font-bold text-[#10234a]">Dịch vụ đã thuê</h3>
+        {lines.length || row.services?.length ? <ul className="mt-1 list-disc pl-5 text-slate-700">{(row.services ?? lines.map((l) => ({ name: l.name, quantity: l.quantity, free: 0, completed: l.completed }))).map((line, i) => <li key={i}>{line.name}{line.quantity > 1 ? ` ×${line.quantity}` : ''}{line.free ? ' (1 lượt miễn phí)' : ''}{line.completed ? ' — đã chuẩn bị' : ''}</li>)}</ul> : <p className="mt-1 text-slate-500">Không thuê dịch vụ.</p>}
+      </div>
+      <div><h3 className="font-bold text-[#10234a]">Ghi chú</h3>
+        {notes.length ? <ul className="mt-1 space-y-1">{notes.map((note) => <li key={note.ts} className="rounded-lg bg-slate-50 px-3 py-2"><span className="text-xs text-slate-500">{shortDateTime(note.ts, timezone)} · {note.by}</span><br />{note.text}</li>)}</ul> : <p className="mt-1 text-slate-500">Chưa có ghi chú.</p>}
+      </div>
     </div>
   );
 }

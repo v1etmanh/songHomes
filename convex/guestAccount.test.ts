@@ -51,15 +51,16 @@ describe('guest accounts for Sóng bookings', () => {
   beforeEach(() => vi.stubEnv('DEMO_MODE', 'true'));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('records infants and pets outside capacity, lists the order, and lets the account cancel it', async () => {
+  it('counts infants toward capacity (pets never), lists the order, and lets the account cancel it', async () => {
     const t = convexTest(schema, modules);
     const fx = await setup(t);
     const asAlice = t.withIdentity(identityFor(fx.alice));
     const full = fx.songUnit.type.maxOccupancy;
     await expect(asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), pets: 6 })).rejects.toThrow(/pets/);
     await expect(asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), infants: -1 })).rejects.toThrow(/infants/);
-    const hold = await asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), adults: full, infants: 2, pets: 1 });
-    expect(await t.run(async (ctx) => ctx.db.get(hold.bookingId))).toMatchObject({ adults: full, infants: 2, pets: 1 });
+    await expect(asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), adults: full, infants: 1 })).rejects.toThrow(/OVER_OCCUPANCY|infants included/);
+    const hold = await asAlice.mutation(api.bookings.createHold, { ...holdArgs(fx.songUnit, 'alice@example.com'), adults: full - 2, infants: 2, pets: 1 });
+    expect(await t.run(async (ctx) => ctx.db.get(hold.bookingId))).toMatchObject({ adults: full - 2, infants: 2, pets: 1 });
 
     const [order] = await asAlice.query(api.guestAccount.myBookings, {});
     expect(order).toMatchObject({ bookingId: hold.bookingId, status: 'hold', infants: 2, pets: 1, nights: 2 });
@@ -95,7 +96,7 @@ describe('guest accounts for Sóng bookings', () => {
       .rejects.toThrow();
   });
 
-  it('tracks mandatory declarations per adult, scopes them to the booking owner, and gates check-in', async () => {
+  it('opens declarations only after confirmation, tracks them per adult, and never blocks check-in', async () => {
     const t = convexTest(schema, modules);
     const fx = await setup(t);
     const asAlice = t.withIdentity(identityFor(fx.alice));
@@ -104,8 +105,15 @@ describe('guest accounts for Sóng bookings', () => {
     await t.mutation(api.bookings.confirmPayAtProperty, { bookingId: hold.bookingId, confirmationCode: hold.confirmationCode, email: 'alice@example.com' });
     await drainScheduled(t);
 
-    expect(await asAlice.query((api as any).guestAccount.pendingDeclarations, {})).toEqual({ count: 1, bookingIds: [hold.bookingId] });
-    expect(await asBob.query((api as any).guestAccount.pendingDeclarations, {})).toEqual({ count: 0, bookingIds: [] });
+    // Pending request: nothing to declare yet, and declaring is refused.
+    expect(await asAlice.query((api as any).guestAccount.pendingDeclarations, {})).toMatchObject({ count: 0, bookingIds: [] });
+    await expect(asAlice.mutation((api as any).residence.registerForMyBooking, {
+      bookingId: hold.bookingId, fullName: 'Nguyễn Văn An', documentType: 'cccd', documentNumber: '079123456789',
+      reason: 'Du lịch', checkInDate: '2027-03-10', checkOutDate: '2027-03-12', consent: true,
+    })).rejects.toThrow(/BOOKING_NOT_CONFIRMED|chưa được xác nhận/);
+    await t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: fx.song._id, bookingId: hold.bookingId, status: 'confirmed' });
+    expect(await asAlice.query((api as any).guestAccount.pendingDeclarations, {})).toMatchObject({ count: 1, bookingIds: [hold.bookingId], items: [{ bookingId: hold.bookingId, missing: 2 }] });
+    expect(await asBob.query((api as any).guestAccount.pendingDeclarations, {})).toMatchObject({ count: 0, bookingIds: [] });
     await expect(asBob.query((api as any).residence.listForMyBooking, { bookingId: hold.bookingId })).rejects.toThrow(/NOT_FOUND|Không tìm thấy/);
 
     const declaration = {
@@ -123,10 +131,6 @@ describe('guest accounts for Sóng bookings', () => {
     expect(mine.progress).toEqual({ required: 2, declared: 1, missing: 1 });
     expect(mine.registrations[0].stayAddress).toContain(fx.songUnit.type.address);
 
-    await t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: fx.song._id, bookingId: hold.bookingId, status: 'confirmed' });
-    await expect(t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: fx.song._id, bookingId: hold.bookingId, status: 'checked_in' }))
-      .rejects.toThrow(/RESIDENCE_INCOMPLETE|Còn thiếu 1/);
-
     await asAlice.mutation((api as any).residence.registerForMyBooking, {
       ...declaration, fullName: 'John Smith', documentType: 'passport', documentNumber: 'c1234567', nationality: 'Hoa Kỳ',
     });
@@ -134,6 +138,12 @@ describe('guest accounts for Sóng bookings', () => {
     await t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: fx.song._id, bookingId: hold.bookingId, status: 'checked_in' });
     const after = await t.run(async (ctx) => ctx.db.get(hold.bookingId));
     expect(after?.status).toBe('checked_in');
+
+    // The guest heard about each step: request received → confirmed → declarations complete.
+    await drainScheduled(t);
+    const mail = await t.run(async (ctx) => (await ctx.db.query('emailLog').collect()).filter((row) => row.bookingId === hold.bookingId));
+    expect(mail.map((row) => row.templateKey).sort()).toEqual(['confirmation', 'request_received', 'residence_complete']);
+    expect(mail.find((row) => row.templateKey === 'confirmation')?.subject).toContain('đã được xác nhận');
   });
 
   it('lets the owner withdraw only unrecorded declarations', async () => {
@@ -141,6 +151,8 @@ describe('guest accounts for Sóng bookings', () => {
     const fx = await setup(t);
     const asAlice = t.withIdentity(identityFor(fx.alice));
     const hold = await asAlice.mutation(api.bookings.createHold, holdArgs(fx.songUnit, 'alice@example.com'));
+    await t.mutation(api.bookings.confirmPayAtProperty, { bookingId: hold.bookingId, confirmationCode: hold.confirmationCode, email: 'alice@example.com' });
+    await t.mutation((api as any).songHomestay.updateBookingStatus, { propertyId: fx.song._id, bookingId: hold.bookingId, status: 'confirmed' });
     const { registrationId } = await asAlice.mutation((api as any).residence.registerForMyBooking, {
       bookingId: hold.bookingId, fullName: 'Nguyễn Văn An', documentType: 'cmnd', documentNumber: '123456789',
       reason: 'Công tác', checkInDate: '2027-03-10', checkOutDate: '2027-03-11', consent: true,
