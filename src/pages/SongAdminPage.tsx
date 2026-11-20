@@ -142,21 +142,6 @@ function revenueColumns(snapshot: Snapshot, startDate: string, endDate: string):
   return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: [{ label: 'Phòng', color: ROOM_COLOR, value: sums.get(key)!.room }, { label: 'Dịch vụ', color: SERVICE_COLOR, value: sums.get(key)!.service }] }));
 }
 
-/** Occupied unit-nights per time bucket, one stacked segment per unit (same booking set as the occupancy KPI). */
-function occupancyColumns(snapshot: Snapshot, startDate: string, endDate: string, colorOf: (unitId: Id<'units'>) => string): Column[] {
-  const buckets = timeBuckets(startDate, endDate);
-  const units = snapshot.units.filter(u => u.status === 'active');
-  const counts = new Map(buckets.keys.map(key => [key, new Map<string, number>()]));
-  for (let day = startDate; day < endDate; day = addDays(day, 1)) {
-    const bucket = counts.get(buckets.keyOf(day));
-    if (!bucket) continue;
-    for (const unit of units) {
-      if (snapshot.bookings.some(row => row.unitId === unit._id && row.checkIn <= day && row.checkOut > day)) bucket.set(unit._id, (bucket.get(unit._id) ?? 0) + 1);
-    }
-  }
-  return buckets.keys.map(key => ({ key, label: buckets.labelOf(key), segments: units.map(unit => ({ label: unit.name, color: colorOf(unit._id), value: counts.get(key)!.get(unit._id) ?? 0 })) }));
-}
-
 // One colour per source, no yellow/beige (brand palette rule).
 const SOURCE_COLORS: Record<SourceLabel, string> = { 'Booking.com': '#1d4ed8', Airbnb: '#e11d48', Zalo: '#0ea5e9', Phone: '#7c3aed', Facebook: '#2563eb', Website: '#0d9488', 'Khác': '#64748b' };
 
@@ -172,7 +157,6 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
   const shown = owner ? metric : metric === 'revenue' ? '' : metric;
   const revenueRows = snapshot.bookings.filter(row => row.revenueRecognised).sort((a, b) => a.checkIn.localeCompare(b.checkIn));
   const activeUnits = snapshot.units.filter(u => u.status === 'active');
-  const buckets = timeBuckets(startDate, endDate);
   // Revenue per unit (room part in the unit's colour, services in cyan), biggest first.
   const revenueByUnit = [...revenueRows.reduce((map, row) => {
     const entry = map.get(row.unitId) ?? { unitId: row.unitId, name: row.unitName, total: 0, service: 0, count: 0 };
@@ -187,16 +171,12 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
       <KpiCard active={shown==='bookings'} onClick={()=>toggle('bookings')} label={METRICS.bookings} value={String(snapshot.kpis.totalBookings)} detail={`${snapshot.kpis.pendingBookings} chờ xác nhận · không tính đơn hủy`} tone="bg-violet-50 text-violet-600" icon={CalendarDays}/>
       <KpiCard active={shown==='conflicts'} onClick={()=>toggle('conflicts')} label={METRICS.conflicts} value={String(snapshot.kpis.conflictCount)} detail={snapshot.kpis.conflictCount?'Cần xử lý ngay':'Lịch đang an toàn'} tone="bg-red-50 text-red-600" icon={AlertTriangle}/>
     </div>
-    {/* Revenue and occupancy open charts; new bookings and conflicts open tables. The overview returns when closed. */}
+    {/* Revenue opens a chart, occupancy per-unit bars; new bookings and conflicts open tables. The overview returns when closed. */}
     {shown ? <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm" aria-label={`${METRICS[shown]} · Chi tiết`}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold text-[#10234a]">{METRICS[shown]} · Chi tiết <span className="whitespace-nowrap text-xs font-semibold text-slate-500">({stayRange(startDate, addDays(endDate,-1))})</span></h2><button type="button" className="btn-secondary" onClick={()=>setMetric('')}>Đóng</button></div>
       {shown==='conflicts' ? <div className="mt-4"><ConflictTable rows={conflicts} bare/><Link className="mt-3 inline-block text-sm font-bold text-[#1565a8]" to="/admin/conflicts">Mở trang xử lý trùng lịch ↗</Link></div> :
        shown==='occupancy' ? <>
-         <p className="mt-1 text-xs text-slate-500">Số căn có khách mỗi {buckets.unit === 'ngày' ? 'đêm' : buckets.unit} trong kỳ, tô màu theo căn. Rê chuột lên cột để xem chi tiết.</p>
-         <StackedBars format={(v) => `${v} đêm`} empty="Chưa có đêm nào có khách trong kỳ." columns={occupancyColumns(snapshot, startDate, endDate, colorOf)}/>
-         <Legend items={activeUnits.map(unit => ({ label: unit.name, color: colorOf(unit._id) }))}/>
-         <h3 className="mt-6 text-sm font-extrabold text-[#10234a]">Công suất từng căn</h3>
-         <div className="mt-3 space-y-3">{activeUnits.map(unit => {
+         <div className="mt-4 space-y-3">{activeUnits.map(unit => {
            const nights = snapshot.occupancyByUnit.find(row => row.unitId === unit._id)?.nights ?? 0;
            const percent = periodNights ? Math.round(nights / periodNights * 100) : 0;
            return <div key={unit._id}><div className="flex justify-between gap-3 text-sm"><span className="font-semibold" style={{color: colorOf(unit._id)}}>{unit.name}</span><span className="whitespace-nowrap"><strong>{percent}%</strong> · {nights}/{periodNights} đêm</span></div><div className="mt-1 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{width: `${percent}%`, background: colorOf(unit._id)}}/></div></div>;
