@@ -8,10 +8,14 @@ import { derivedNotifications } from '../../lib/songShift';
 import type { BookingRow } from '../../lib/songAdminTypes';
 import { todayIso } from '../../lib/dates';
 
-type Tab = 'all' | 'unread' | 'alert';
-type Item = { id: string; tone: 'alert' | 'info'; title: string; detail: string; to: string; unread: boolean; alertId?: Id<'icalSyncAlerts'>; ts?: number };
+type Tab = 'todo' | 'alerts' | 'read';
+type Item = { id: string; kind: 'todo' | 'alert'; tone: 'alert' | 'info'; title: string; detail: string; to: string; unread: boolean; alertId?: Id<'icalSyncAlerts'>; ts?: number };
 
-const TABS: Array<[Tab, string]> = [['all', 'Tất cả'], ['unread', 'Chưa đọc'], ['alert', 'Cảnh báo']];
+/**
+ * Three disjoint lists: open work that stays until it is done, unread system
+ * alerts (iCal errors, double bookings, recoveries), and alerts already read.
+ */
+const TABS: Array<[Tab, string]> = [['todo', 'Việc cần làm'], ['alerts', 'Cảnh báo mới'], ['read', 'Đã đọc']];
 
 /**
  * Operations notifications for Sóng staff. Sync/double-booking alerts come from the
@@ -28,7 +32,7 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
   const markRead = useMutation(api.icalAlerts.markRead);
   const markAllRead = useMutation(api.icalAlerts.markAllRead);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>('all');
+  const [chosenTab, setTab] = useState<Tab | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,9 +44,10 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
   }, [open]);
 
-  const derived: Item[] = rows ? derivedNotifications(rows, today).map((item) => ({ ...item, unread: true })) : [];
+  const derived: Item[] = rows ? derivedNotifications(rows, today).map((item) => ({ ...item, kind: 'todo' as const, unread: true })) : [];
   const persisted: Item[] = (inbox?.alerts ?? []).map((alert) => ({
     id: `alert:${alert._id}`,
+    kind: 'alert' as const,
     tone: alert.kind === 'sync_recovered' ? 'info' : 'alert',
     title: alert.subject,
     detail: alert.unitName ? `${alert.unitName}${alert.label ? ` · ${alert.label}` : ''}` : alert.body.slice(0, 90),
@@ -53,7 +58,15 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
   }));
   const items = [...derived, ...persisted];
   const unreadCount = items.filter((item) => item.unread).length;
-  const visible = items.filter((item) => tab === 'all' || (tab === 'unread' && item.unread) || (tab === 'alert' && item.tone === 'alert'));
+  const lists: Record<Tab, Item[]> = {
+    todo: derived,
+    alerts: persisted.filter((item) => item.unread),
+    read: persisted.filter((item) => !item.unread),
+  };
+  // Open on the first list that has something, unless staff picked a tab.
+  const tab: Tab = chosenTab ?? (lists.todo.length ? 'todo' : 'alerts');
+  const visible = lists[tab];
+  const empty: Record<Tab, string> = { todo: 'Không còn việc nào cần làm.', alerts: 'Không có cảnh báo mới.', read: 'Chưa có cảnh báo nào đã đọc.' };
   const fmt = (ts: number) => new Intl.DateTimeFormat('vi-VN', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(ts);
 
   return (
@@ -69,9 +82,10 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
             <button type="button" aria-label="Đóng" className="text-slate-400 hover:text-slate-700" onClick={() => setOpen(false)}><X className="h-4 w-4" /></button>
           </div>
           <div role="group" aria-label="Lọc thông báo" className="flex gap-2 border-b px-4 py-2">
-            {TABS.map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => setTab(key)} className={`rounded-full px-3 py-1 text-xs font-bold ${tab === key ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>)}
-            {inbox?.unread ? <button type="button" className="ml-auto text-xs font-bold text-blue-700" onClick={() => void markAllRead({ propertyId })}>Đánh dấu đã đọc</button> : null}
+            {TABS.map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => setTab(key)} className={`rounded-full px-3 py-1 text-xs font-bold ${tab === key ? 'bg-[#0b2e4f] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}{key !== 'read' && lists[key].length ? ` (${lists[key].length})` : ''}</button>)}
           </div>
+          {tab === 'todo' && lists.todo.length ? <p className="border-b bg-slate-50 px-4 py-2 text-xs text-slate-500">Mục ở đây tự mất khi đã xử lý xong (xác nhận đơn, khai báo tạm trú…).</p> : null}
+          {tab === 'alerts' && lists.alerts.length ? <div className="flex items-center justify-between gap-2 border-b bg-slate-50 px-4 py-2 text-xs text-slate-500"><span>Bấm vào cảnh báo để mở và đánh dấu đã đọc.</span><button type="button" className="whitespace-nowrap font-bold text-blue-700 hover:underline" onClick={() => void markAllRead({ propertyId })}>Đọc hết</button></div> : null}
           <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
             {visible.map((item) => (
               <li key={item.id}>
@@ -81,7 +95,7 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
                 </Link>
               </li>
             ))}
-            {!visible.length ? <li className="px-4 py-8 text-center text-sm text-slate-500">Không có thông báo nào.</li> : null}
+            {!visible.length ? <li className="px-4 py-8 text-center text-sm text-slate-500">{empty[tab]}</li> : null}
           </ul>
         </div>
       ) : null}

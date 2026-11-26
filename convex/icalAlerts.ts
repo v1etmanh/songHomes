@@ -114,6 +114,15 @@ export const recordRun = internalMutation({
         }, outbox);
       }
     } else if (previous && !previous.ok) {
+      // The feed works again: its earlier "sync failed" alerts are resolved, so they
+      // leave the unread list on their own instead of piling up next to the recovery.
+      const stale = (await ctx.db
+        .query('icalSyncAlerts')
+        .withIndex('by_property_createdAt', (q) => q.eq('propertyId', args.propertyId))
+        .order('desc')
+        .take(RECENT_SCAN))
+        .filter((a) => a.kind === 'sync_failed' && a.unitId === args.unitId && a.label === args.label && a.readAt === undefined);
+      for (const alert of stale) await ctx.db.patch(alert._id, { readAt: now });
       await raiseAlert(ctx, property, {
         kind: 'sync_recovered',
         unitId: unit._id,

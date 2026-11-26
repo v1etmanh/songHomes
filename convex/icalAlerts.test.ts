@@ -62,7 +62,9 @@ describe('iCal sync alerts', () => {
     await withFetch(() => new Response(ics([]), { status: 200 }), sync);
     inbox = await t.query((api as any).icalAlerts.inbox, { propertyId: fx.propertyId });
     expect(inbox.alerts.map((a: any) => a.kind)).toEqual(['sync_recovered', 'sync_failed']);
-    expect(inbox.unread).toBe(2);
+    // Recovery resolves the failure: only the recovery notice is still unread.
+    expect(inbox.unread).toBe(1);
+    expect(inbox.alerts.find((a: any) => a.kind === 'sync_failed').readAt).toBeDefined();
 
     const runs: any = await t.query((api as any).icalAlerts.listRuns, { propertyId: fx.propertyId });
     expect(runs.runs.map((r: any) => r.ok)).toEqual([true, false, false]);
