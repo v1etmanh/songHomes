@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck, Circle, Eye, FileText, Fil
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
-import { addDays } from '../../../shared/pricing';
+import { addDays, enumerateNights } from '../../../shared/pricing';
 import { todayIso } from '../../lib/dates';
 import { formatMoney } from '../../lib/money';
 import type { BookingRow, Snapshot } from '../../lib/songAdminTypes';
@@ -167,10 +167,14 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
   ) : panel === 'conflicts' ? (
     shift.conflicts.length ? (
       <ul className="divide-y divide-slate-100">
-        {shift.conflicts.map((row) => (
-          <li key={row.bookingId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-            <div><p className="font-bold text-[#10234a]">{row.unitName}</p><p className="text-xs text-slate-500">{row.confirmationCode} · {sourceLabel(row.source)} · {stayRange(row.checkIn, row.checkOut)}</p></div>
-            <button type="button" className={`${actionButton} bg-red-600 text-white hover:bg-red-700`} onClick={() => setConflictFor(row)}>Xử lý</button>
+        {conflictPairs(shift.conflicts, snapshot.bookings).map(({ key, flagged, other, nights }) => (
+          <li key={key} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+            <div className="min-w-0 space-y-0.5">
+              <p className="font-bold text-[#10234a]">{flagged.unitName}</p>
+              <p className="text-xs text-slate-600">{side(flagged)}{other ? <> <strong className="text-slate-800">trùng với</strong> {side(other)}</> : null}</p>
+              {nights.length ? <p className="text-xs font-extrabold text-red-600">Trùng đêm: {nights.map(shortYear).join(', ')}</p> : null}
+            </div>
+            <button type="button" className={`${actionButton} bg-red-600 text-white hover:bg-red-700`} onClick={() => setConflictFor(flagged)}>Xử lý</button>
           </li>
         ))}
       </ul>
@@ -183,6 +187,8 @@ export function FrontDeskShift({ propertyId, timezone }: { propertyId: Id<'prope
           <li key={row.bookingId} className="space-y-2 px-5 py-3 text-sm">
             <div className="flex items-start justify-between gap-2"><div><p className="font-bold text-[#10234a]">{row.guestName}</p><p className="text-xs text-slate-500">{row.confirmationCode} · {row.guestPhone || row.guestEmail}</p></div><strong className="whitespace-nowrap text-[#10234a]">{formatMoney(row.totalCents, snapshot.property.currency)}</strong></div>
             <p className="text-xs text-slate-500">{row.unitName} · {stayRange(row.checkIn, row.checkOut)}{isOverduePending(row, today) ? ' · đã quá ngày nhận phòng' : ''}</p>
+            {/* Party size + services right under the stay, so the desk can match the total and prepare (WEBSITE (2).pdf r7). */}
+            <p className="text-xs font-semibold text-slate-700">{partyLine(row)} · {servicesLine(row)}</p>
             <div className="flex gap-2">
               <button type="button" className={`${actionButton} border border-red-200 bg-white text-red-700 hover:bg-red-50`} onClick={() => void declineWeb(row)}>Từ chối</button>
               <button type="button" className={`${actionButton} bg-[#0b2e4f] text-white hover:bg-[#1565a8]`} onClick={() => void transition(row, 'confirmed')}>Xác nhận</button>
@@ -249,6 +255,45 @@ function guestCount(row: BookingRow): string {
   if (!total) return 'Số khách chưa rõ (OTA)';
   const parts = [`${row.adults} người lớn`, row.children ? `${row.children} trẻ em` : '', row.infants ? `${row.infants} em bé` : ''].filter(Boolean).join(', ');
   return `${total} khách (${parts})`;
+}
+
+/** dd/mm/yy, as the front desk reads dates. */
+const shortYear = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
+const side = (row: BookingRow) => `${row.confirmationCode} · ${sourceLabel(row.source)} (${shortYear(row.checkIn)} → ${shortYear(row.checkOut)})`;
+
+/**
+ * One line per clashing pair: the flagged booking, the booking it overlaps on
+ * the same unit, and every shared night (half-open [checkIn, checkOut)).
+ */
+function conflictPairs(flaggedRows: BookingRow[], all: BookingRow[]) {
+  const live = all.filter((row) => !['cancelled', 'expired', 'blocked', 'checked_out'].includes(row.status));
+  const seen = new Set<string>();
+  const out: Array<{ key: string; flagged: BookingRow; other: BookingRow | null; nights: string[] }> = [];
+  for (const flagged of flaggedRows) {
+    const others = live.filter((row) => row.bookingId !== flagged.bookingId && row.unitId === flagged.unitId && row.checkIn < flagged.checkOut && flagged.checkIn < row.checkOut);
+    if (!others.length) { out.push({ key: String(flagged.bookingId), flagged, other: null, nights: [] }); continue; }
+    for (const other of others) {
+      const key = [String(flagged.bookingId), String(other.bookingId)].sort().join(':');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const start = flagged.checkIn > other.checkIn ? flagged.checkIn : other.checkIn;
+      const end = flagged.checkOut < other.checkOut ? flagged.checkOut : other.checkOut;
+      out.push({ key, flagged, other, nights: enumerateNights(start, end) });
+    }
+  }
+  return out;
+}
+
+/** "4 người lớn, 1 trẻ em" — the party as booked. */
+function partyLine(row: BookingRow): string {
+  return [`${row.adults} người lớn`, row.children ? `${row.children} trẻ em` : '', row.infants ? `${row.infants} em bé` : '', row.pets ? `${row.pets} thú cưng` : ''].filter(Boolean).join(', ');
+}
+
+/** "Dịch vụ: Đón sân bay (Xe riêng 7 chỗ) ×1 (miễn phí 1)" or "Không có dịch vụ bổ sung". */
+function servicesLine(row: BookingRow): string {
+  const lines = row.services ?? [];
+  if (!lines.length) return 'Không có dịch vụ bổ sung';
+  return `Dịch vụ: ${lines.map((line) => `${line.name} ×${line.quantity}${line.free ? ` (miễn phí ${line.free})` : ''}`).join(', ')}`;
 }
 
 /** Latest front-desk note, shown under the guest line. */

@@ -12,11 +12,11 @@ import {
   daysBetween,
   enumerateNights,
   generateConfirmationCode,
-  stayPerkFreeUnits,
   StayRuleError,
   validateStayRules,
 } from '../shared/pricing';
 import { readPublicPolicy } from './publicPolicy';
+import { insertBookingAddOns, priceAddOnLines } from './addOnPricing';
 
 /**
  * Hold TTL. NOT shorter: Stripe Checkout Sessions cannot expire sooner than
@@ -244,40 +244,10 @@ export const createHold = mutation({
       : '';
 
     // 4. Server-authoritative pricing (add-on prices come from the DB, never the client).
-    const addOnLines = [];
-    for (const line of args.addOns) {
-      const addOn = await ctx.db.get(line.addOnId);
-      if (!addOn || !addOn.active || addOn.propertyId !== unit.propertyId) {
-        throw new ConvexError({ code: 'ADDON_INVALID', message: 'An add-on is unavailable.' });
-      }
-      if (addOn.appliesTo.length > 0 && !addOn.appliesTo.includes(unit.unitTypeId)) {
-        throw new ConvexError({ code: 'ADDON_INVALID', message: `${addOn.name} is not available for this unit.` });
-      }
-      if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 99) {
-        throw new ConvexError({ code: 'ADDON_INVALID', message: 'Invalid add-on quantity.' });
-      }
-      addOnLines.push({
-        addOn,
-        quantity: line.quantity,
-      });
-    }
     // Stay-length perk (e.g. free airport pickup leg from 3 nights) is derived
-    // here from the DB flag and the requested dates — never from the client.
-    const perkFree = stayPerkFreeUnits(
-      addOnLines.map((l) => ({
-        unitPriceCents: l.addOn.priceCents,
-        quantity: l.quantity,
-        freeFirstUnitMinNights: l.addOn.freeFirstUnitMinNights,
-      })),
-      enumerateNights(args.checkIn, args.checkOut).length,
-    );
-    const addOnPriceLines = addOnLines.map((l, index) => ({
-      name: l.addOn.name,
-      unitPriceCents: l.addOn.priceCents,
-      quantity: l.quantity,
-      taxable: l.addOn.taxable,
-      ...(perkFree[index] ? { freeQuantity: perkFree[index] } : {}),
-    }));
+    // inside priceAddOnLines from the DB flag and the requested dates.
+    const pricedAddOns = await priceAddOnLines(ctx, unit, args.addOns, args.checkIn, args.checkOut);
+    const addOnPriceLines = pricedAddOns.priceLines;
 
     // Promo validation (Shopify-style): existence, active, window, unit-type
     // scope, minimum spend, total-usage cap, once-per-guest. All checks and
@@ -398,18 +368,7 @@ export const createHold = mutation({
         kind: date < args.checkOut ? 'stay' : 'prep',
       });
     }
-    for (const [index, line] of addOnLines.entries()) {
-      await ctx.db.insert('bookingAddOns', {
-        bookingId,
-        addOnId: line.addOn._id,
-        nameSnapshot: line.addOn.name,
-        unitPriceCents: line.addOn.priceCents,
-        quantity: line.quantity,
-        ...(perkFree[index] ? { freeQuantity: perkFree[index] } : {}),
-        taxable: line.addOn.taxable,
-        soldAt: now,
-      });
-    }
+    await insertBookingAddOns(ctx, bookingId, pricedAddOns, now);
 
     // Occupancy just DECREASED (a unit-night is now blocked) — the
     // oversell-critical direction. Two things happen, both gated on a connected

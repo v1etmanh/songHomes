@@ -3,7 +3,8 @@ import { mutation, query } from './_generated/server';
 import { internal } from './_generated/api';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { addOnLineCents, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
+import { addOnLineCents, computePrice, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
+import { insertBookingAddOns, priceAddOnLines } from './addOnPricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { residenceProgress } from './residence';
 import { findConflictPairs } from './icalImport';
@@ -287,6 +288,9 @@ export const createManualBooking = mutation({
       v.literal('other'),
     ),
     note: v.optional(v.string()),
+    // Services chosen by staff, exactly like the guest flow (WEBSITE (2).pdf r7).
+    // Only ids and quantities: prices always come from the DB.
+    addOns: v.optional(v.array(v.object({ addOnId: v.id('addOns'), quantity: v.number() }))),
   },
   handler: async (ctx, args) => {
     await requireWrite(ctx, args.propertyId, 'song.manual_booking.create');
@@ -296,6 +300,29 @@ export const createManualBooking = mutation({
     }
     const nights = assertDateRange(args.checkIn, args.checkOut);
     await assertUnitAvailable(ctx, unit._id, nights);
+    // Price the stay like a website booking (same rate plan the public page
+    // quotes, same add-on validation and perk), so manual bookings carry real
+    // revenue instead of 0 đ. No promo / gift certificate on this path.
+    const property = await ctx.db.get(args.propertyId);
+    if (!property) throw new ConvexError('PROPERTY_NOT_FOUND');
+    const ratePlan = await ctx.db
+      .query('ratePlans')
+      .withIndex('by_unitType', (q) => q.eq('unitTypeId', unit.unitTypeId).eq('active', true))
+      .first();
+    if (!ratePlan) {
+      throw new ConvexError({ code: 'RATE_PLAN_MISSING', message: 'Căn này chưa có giá phòng. Vui lòng đặt giá trong Quản lý chỗ nghỉ.' });
+    }
+    if (args.addOns && args.addOns.length > 20) {
+      throw new ConvexError({ code: 'ADDON_INVALID', message: 'Quá nhiều dịch vụ trong một booking.' });
+    }
+    const pricedAddOns = await priceAddOnLines(ctx, unit, args.addOns ?? [], args.checkIn, args.checkOut);
+    const price = computePrice({
+      ratePlan,
+      checkIn: args.checkIn,
+      checkOut: args.checkOut,
+      addOns: pricedAddOns.priceLines,
+      taxRateBps: property.taxRateBps,
+    });
     const guestName = args.guestName.trim();
     const phone = args.guestPhone.trim();
     if (!guestName || !phone) {
@@ -357,6 +384,8 @@ export const createManualBooking = mutation({
       status: 'confirmed',
       source: `manual:${args.source}`,
       confirmationCode,
+      ratePlanId: ratePlan._id,
+      priceBreakdown: price,
       statusHistory: [{ status: 'confirmed', ts: now }],
       notes: args.note?.trim() ? [{ ts: now, text: args.note.trim(), by: 'Admin Sóng Homestay' }] : [],
       createdAt: now,
@@ -366,8 +395,9 @@ export const createManualBooking = mutation({
     for (const date of nights) {
       await ctx.db.insert('unitNights', { unitId: unit._id, date, bookingId, kind: 'stay' });
     }
+    await insertBookingAddOns(ctx, bookingId, pricedAddOns, now);
     await markPropertyDirtyInline(ctx, args.propertyId);
-    return { bookingId, confirmationCode };
+    return { bookingId, confirmationCode, totalCents: price.totalCents };
   },
 });
 
@@ -762,7 +792,11 @@ export const adminSnapshot = query({
       ['airport', { name: 'Đưa đón sân bay', bookings: 0, units: 0, freeUnits: 0, revenueCents: 0 }],
     ]);
     const groupOf = (name: string) => name.startsWith('Thuê xe máy') ? 'bike' : /sân bay/i.test(name) ? 'airport' : null;
-    for (const booking of inRange) {
+    // The booking list also shows cancelled bookings under "Đã hủy" (WEBSITE (2).pdf r7),
+    // whoever cancelled them. They are listed only: revenue (status-gated below),
+    // channel counts, occupancy and KPIs stay on `active`/`inRange`.
+    const listed = bookings.filter((row) => row.status !== 'expired' && row.checkIn < args.endDate && row.checkOut > args.startDate);
+    for (const booking of listed) {
       const [guest, lines] = await Promise.all([
         booking.guestId ? ctx.db.get(booking.guestId) : null,
         linesFor(booking._id),
@@ -788,7 +822,7 @@ export const adminSnapshot = query({
         }
       }
       const source = sourceName(booking.source);
-      sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
+      if (booking.status !== 'cancelled') sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
       bookingRows.push({
         bookingId: booking._id,
         confirmationCode: booking.confirmationCode,

@@ -5,7 +5,10 @@ import { BedDouble, ConciergeBell, Plus, Save, Users } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { formatMoney } from '../lib/money';
+import { enumerateNights } from '../../shared/pricing';
 import { ErrorMessage, extractErrorMessage } from './ErrorMessage';
+import { AddOnPicker } from './AddOnPicker';
+import { SongServicePicker, selectionQuantities, songTransport, type ServiceSelection } from './song/SongServicePicker';
 
 type Catalog = {
   property: { propertyId: Id<'properties'>; name: string; slug: string; currency: string };
@@ -78,6 +81,9 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
   const [children, setChildren] = useState(0);
   const [source, setSource] = useState<keyof typeof sourceLabels>('zalo');
   const [note, setNote] = useState('');
+  // Services, picked exactly like the guest booking form (WEBSITE (2).pdf r7). Prices are a preview; the server recomputes.
+  const [services, setServices] = useState<ServiceSelection[]>([]);
+  const [plainQuantities, setPlainQuantities] = useState<Record<string, number>>({});
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitSlug, setNewUnitSlug] = useState('');
   const [newUnitTypeId, setNewUnitTypeId] = useState('');
@@ -91,6 +97,17 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
     [catalog, unitId],
   );
   const selectedType = catalog?.unitTypes.find((type) => type.unitTypeId === selectedUnit?.unitTypeId);
+  const nights = checkIn && checkOut && checkOut > checkIn ? enumerateNights(checkIn, checkOut).length : 0;
+  const serviceAddOns = (catalog?.addOns ?? []).filter((service) => service.active).sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((service) => ({ ...service, addOnId: String(service.addOnId), freeFirstUnitMinNights: service.freeFirstUnitMinNights ?? undefined }));
+  const transport = songTransport(serviceAddOns);
+  const transportIds = new Set([transport.bike, ...transport.cars.flatMap((car) => [car.pickup, car.dropoff])].filter(Boolean).map((service) => service!.addOnId));
+  const otherAddOns = serviceAddOns.filter((service) => !transportIds.has(service.addOnId));
+  const addOnQuantities = useMemo(() => {
+    const merged: Record<string, number> = { ...plainQuantities };
+    for (const [id, quantity] of Object.entries(selectionQuantities(services))) merged[id] = (merged[id] ?? 0) + quantity;
+    return merged;
+  }, [plainQuantities, services]);
 
   async function submitManualBooking(event: FormEvent) {
     event.preventDefault();
@@ -109,13 +126,17 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
         adults,
         children,
         source,
-        note: note.trim() || undefined,
+        note: [note.trim(), ...services.map((s) => `${s.title}: ${s.detail}`)].filter(Boolean).join(' | ') || undefined,
+        addOns: Object.entries(addOnQuantities).filter(([, quantity]) => quantity > 0).map(([addOnId, quantity]) => ({ addOnId: addOnId as Id<'addOns'>, quantity })),
       });
-      setFeedback({ kind: 'ok', text: `Đã tạo booking ${result.confirmationCode} từ ${sourceLabels[source]}. Lịch phòng đã được khóa ngay.` });
+      const total = catalog ? ` · Tổng tiền ${formatMoney(result.totalCents, catalog.property.currency)}` : '';
+      setFeedback({ kind: 'ok', text: `Đã tạo booking ${result.confirmationCode} từ ${sourceLabels[source]}${total}. Lịch phòng đã được khóa ngay.` });
       setGuestName('');
       setGuestPhone('');
       setGuestEmail('');
       setNote('');
+      setServices([]);
+      setPlainQuantities({});
       onBookingCreated?.(result.confirmationCode);
     } catch (error) {
       setFeedback({ kind: 'error', text: extractErrorMessage(error) });
@@ -178,6 +199,11 @@ export function SongHomestayManagementSection({ propertyId, initialTab = 'bookin
           <label><span className="field-label">Số điện thoại *</span><input className="field-input" required value={guestPhone} onChange={(event) => setGuestPhone(event.target.value)} /></label>
           <label><span className="field-label">Email (không bắt buộc)</span><input className="field-input" type="email" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)} /></label>
           <div className="grid grid-cols-2 gap-3"><label><span className="field-label">Người lớn</span><input className="field-input" type="number" min={1} max={selectedType?.maxOccupancy ?? 20} value={adults} onChange={(event) => setAdults(Number(event.target.value))} /></label><label><span className="field-label">Trẻ em</span><input className="field-input" type="number" min={0} max={20} value={children} onChange={(event) => setChildren(Number(event.target.value))} /></label></div>
+          {catalog && serviceAddOns.length ? <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/40 p-4 md:col-span-2">
+            <SongServicePicker addOns={serviceAddOns} nights={nights} currency={catalog.property.currency} selections={services} onChange={setServices} />
+            <AddOnPicker addOns={otherAddOns} currency={catalog.property.currency} selected={addOnQuantities} onChange={(addOnId, quantity) => setPlainQuantities((prev) => ({ ...prev, [addOnId]: quantity }))} />
+            <p className="text-xs text-slate-500">Tiền phòng và dịch vụ được tính theo đúng giá đặt trên website (kể cả miễn phí chiều đón khi ở đủ đêm); tổng tiền hiện ngay sau khi tạo và được cộng vào doanh thu.</p>
+          </div> : null}
           <label className="md:col-span-2"><span className="field-label">Ghi chú</span><textarea className="field-input min-h-20" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ví dụ: đã nhận cọc qua chuyển khoản" /></label>
           <div className="md:col-span-2"><button className="btn-primary" type="submit" disabled={working || !unitId || !checkIn || !checkOut}>{working ? 'Đang kiểm tra lịch…' : 'Tạo booking và khóa lịch'}</button></div>
         </form>

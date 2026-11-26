@@ -122,7 +122,7 @@ export function ConflictResolver({ propertyId, bookingId }: { propertyId: Id<'pr
                     <td className="min-w-44 p-3 font-bold text-[#10234a] !whitespace-normal">{row.unitName}</td>
                     <td className="p-3">{shortDay(row.overlapStart)} → {shortDay(row.overlapEnd)}</td>
                     <td className="p-3 text-xs text-slate-600">{row.bookingCode}{row.otherBookingCode ? ` ↔ ${row.otherBookingCode}` : ''}</td>
-                    <td className="min-w-56 p-3 !whitespace-normal"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">{METHOD_LABEL[row.method]}</span><p className="mt-1 text-xs text-slate-600">{row.detail}{row.note ? ` — ${row.note}` : ''}</p></td>
+                    <td className="min-w-56 p-3 !whitespace-normal"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">{METHOD_LABEL[row.method]}</span><p className="mt-1 text-xs text-slate-600">{row.detail}</p>{row.note ? <p className="mt-1 text-sm font-semibold text-[#10234a]">“{row.note}”</p> : null}</td>
                     <td className="p-3 font-semibold text-slate-700">{row.byName}</td>
                     <td className="p-3 text-xs text-slate-500">{new Date(row.at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                   </tr>
@@ -206,7 +206,7 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
         ))}
       </div>
       <div className="px-5 pb-1">
-        <label className="block"><span className="field-label">Ghi chú cách xử lý (lưu vào lịch sử)</span>
+        <label className="block"><span className="field-label">Ghi chú cách xử lý (lưu vào lịch sử, bắt buộc khi đánh dấu đã xử lý)</span>
           <input className="field-input" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="VD: đã gọi khách, đổi sang căn khác cùng giá" /></label>
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-red-100 px-5 py-3">
@@ -214,7 +214,9 @@ function ConflictCard({ propertyId, unitId, unitName, unitSlug, overlapNights, s
         <button
           type="button"
           className="btn-secondary"
-          disabled={busy}
+          // A handled alert must record HOW it was handled (WEBSITE (2).pdf r7): the note is required here.
+          disabled={busy || !note.trim()}
+          title={note.trim() ? undefined : 'Nhập ghi chú cách xử lý trước khi đánh dấu'}
           onClick={() => void run(
             () => { const target = flagged ?? sides[1].side; return resolve({ bookingId: target.bookingId, resolutionType: 'acknowledge', note: note || undefined, conflictWith: sides.find((s) => s.side.bookingId !== target.bookingId)!.side.bookingId }); },
             'Đã đánh dấu đã xử lý.',

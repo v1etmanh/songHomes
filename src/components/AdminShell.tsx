@@ -91,6 +91,8 @@ const SONG_NAV_ITEMS = [
   { to: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ] as const;
 
+const ACTIVE_PROPERTY_KEY = 'openstays.admin.activeProperty';
+
 export function AdminShell() {
   const gate = useStaffGate();
   const { signOut } = useAuthActions();
@@ -103,12 +105,23 @@ export function AdminShell() {
   const [searchRefreshState, setSearchRefreshState] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
   const rebuildSearch = useMutation((api as any).operationalSearch.rebuild);
 
+  // Opening a page keeps the property chosen last time (per-browser convenience); otherwise
+  // Sóng Homestay when this account has it, else the first assignment. Before this, every
+  // page load fell back to the first property (Pinewood) and Sóng screens looked empty.
   useEffect(() => {
     if (!properties?.length) return;
-    if (!propertyId || !properties.some((property) => property.propertyId === propertyId)) {
-      setPropertyId(properties[0].propertyId);
-    }
+    if (propertyId && properties.some((property) => property.propertyId === propertyId)) return;
+    let remembered: string | null = null;
+    try { remembered = window.localStorage.getItem(ACTIVE_PROPERTY_KEY); } catch { /* storage blocked */ }
+    const next = properties.find((property) => property.propertyId === remembered)
+      ?? properties.find((property) => property.slug === 'song-homestay')
+      ?? properties[0];
+    setPropertyId(next.propertyId);
   }, [properties, propertyId]);
+  useEffect(() => {
+    if (!propertyId) return;
+    try { window.localStorage.setItem(ACTIVE_PROPERTY_KEY, propertyId); } catch { /* storage blocked */ }
+  }, [propertyId]);
 
   const foundation = useQuery(
     (api as any).operationsFoundation.snapshot,

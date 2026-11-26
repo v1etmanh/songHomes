@@ -217,7 +217,7 @@ function Dashboard({snapshot, metric, setMetric, startDate, endDate}: {snapshot:
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[1.45fr_1fr]">
       <ConflictTable rows={openConflicts.slice(0,6)} />
-      <ConflictChart stats={snapshot.conflictStats} />
+      <ConflictChart snapshot={snapshot} startDate={startDate} endDate={endDate} />
     </div>
     <ServicePie usage={snapshot.serviceUsage} money={owner ? money : null} />
     </>}
@@ -290,15 +290,13 @@ function ServicePie({ usage, money }: { usage: Snapshot['serviceUsage']; money: 
 }
 
 /** Double bookings in the period: confirmed bookings vs unconfirmed requests, each stacked open (red) / handled (green). */
-function ConflictChart({ stats }: { stats: Snapshot['conflictStats'] }) {
-  const open = stats.confirmed.open + stats.pending.open;
-  const resolved = stats.confirmed.resolved + stats.pending.resolved;
-  const columns: Column[] = [
-    { key: 'confirmed', label: 'Đã xác nhận', segments: [{ label: 'Chưa xử lý', color: '#dc2626', value: stats.confirmed.open }, { label: 'Đã xử lý', color: '#059669', value: stats.confirmed.resolved }] },
-    { key: 'pending', label: 'Chưa xác nhận', segments: [{ label: 'Chưa xử lý', color: '#dc2626', value: stats.pending.open }, { label: 'Đã xử lý', color: '#059669', value: stats.pending.resolved }] },
-  ];
+/** Double bookings per day of the period, split open / handled — same buckets as the revenue chart (WEBSITE (2).pdf r7). */
+function ConflictChart({ snapshot, startDate, endDate }: { snapshot: Snapshot; startDate: string; endDate: string }) {
+  const open = snapshot.kpis.conflictCount;
+  const resolved = snapshot.kpis.conflictResolvedCount;
+  const columns = conflictColumns(snapshot, startDate, endDate);
   return <section className="min-w-0 rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-    <div className="flex items-start justify-between gap-3"><div><h2 className="font-extrabold text-[#10234a]">Số lần trùng lịch</h2><p className="text-xs text-slate-500">Booking đã xác nhận và chưa xác nhận trong kỳ</p></div><p className="text-right text-xs text-slate-500">Tổng<br/><strong className="text-lg text-[#10234a]">{open + resolved} lần</strong></p></div>
+    <div className="flex items-start justify-between gap-3"><div><h2 className="font-extrabold text-[#10234a]">Số lần trùng lịch</h2><p className="text-xs text-slate-500">Theo ngày trong kỳ · chưa xử lý và đã xử lý</p></div><p className="text-right text-xs text-slate-500">Tổng<br/><strong className="text-lg text-[#10234a]">{open + resolved} lần</strong></p></div>
     <div className="mt-3 grid grid-cols-2 gap-3">
       <div className="rounded-xl border border-red-100 bg-red-50/60 p-3"><p className="text-xs font-semibold text-slate-500">Chưa xử lý</p><p className="text-xl font-extrabold text-red-700">{open}</p></div>
       <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3"><p className="text-xs font-semibold text-slate-500">Đã xử lý</p><p className="text-xl font-extrabold text-emerald-700">{resolved}</p></div>
@@ -799,7 +797,13 @@ const unitColors = ['#1d4ed8','#7e22ce','#047857','#b45309','#be185d','#0e7490',
 // A blocked night draws like any occupied night: the grey "Khóa phòng" colour and legend entry are gone.
 const statusColors: Record<CalendarStatus,string> = {pending:'#e11d48',confirmed:'#1d4ed8',completed:'#6d28d9',cancelled:'#991b1b',blocked:'#1d4ed8'};
 // Bars show the guest's name; an OTA import without a name falls back to its channel.
-const barLabel = (row: BookingRow) => row.guestName && row.guestName !== 'Khách OTA' ? row.guestName : sourceLabel(row.source);
+// The visible note also names the booking source (WEBSITE (2).pdf r7): "Mai · Airbnb".
+// OTA imports carry a placeholder name ("Khách Airbnb") — those show the source alone.
+const barLabel = (row: BookingRow) => {
+  const source = sourceLabel(row.source);
+  const placeholder = !row.guestName || row.guestName === 'Khách OTA' || row.guestName === `Khách ${source}`;
+  return placeholder ? source : `${row.guestName} · ${source}`;
+};
 /** Confirmed stays (incl. OTA imports, which arrive confirmed); pending requests, cancellations and blocks are not drawn. */
 const CALENDAR_STATUSES = new Set(['confirmed', 'checked_in', 'checked_out', 'external']);
 
