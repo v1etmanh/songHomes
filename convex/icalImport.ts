@@ -441,6 +441,14 @@ export const updateImportStatus = internalMutation({
   handler: async (ctx, args) => {
     const unit = await ctx.db.get(args.unitId);
     if (!unit) return;
+    // Bandwidth: every admin query that reads `units` (adminSnapshot, the
+    // notification bell…) re-runs whenever a unit row changes. A feed that
+    // syncs every 30 min with nothing new must not touch the unit, so the
+    // status is written only when it changes (ok ↔ error, new counts, new
+    // error text). The true "last synced" time comes from icalSyncRuns,
+    // which records every attempt anyway.
+    const current = unit.icalImports.find((imp) => imp.url === args.url);
+    if (!current || (current.lastStatus === args.lastStatus && current.lastSyncedAt !== undefined)) return;
     const icalImports = unit.icalImports.map((imp) =>
       imp.url === args.url ? { ...imp, lastSyncedAt: args.lastSyncedAt, lastStatus: args.lastStatus } : imp,
     );

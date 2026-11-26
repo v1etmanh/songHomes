@@ -247,7 +247,8 @@ export const feedOverview = query({
             return {
               label: imp.label,
               url: imp.url,
-              lastSyncedAt: imp.lastSyncedAt ?? null,
+              // The unit row only changes when the status changes; the latest run is the real sync time.
+              lastSyncedAt: Math.max(last?.ts ?? 0, imp.lastSyncedAt ?? 0) || null,
               lastStatus: imp.lastStatus ?? null,
               lastRun: last
                 ? { ok: last.ok, error: last.error ?? null, inserted: last.inserted, updated: last.updated, removed: last.removed, conflicts: last.conflicts, ts: last.ts }

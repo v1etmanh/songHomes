@@ -3,7 +3,7 @@ import { mutation, query } from './_generated/server';
 import { internal } from './_generated/api';
 import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { addOnLineCents, computePrice, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
+import { addDays, addOnLineCents, computePrice, daysBetween, isIsoDate, enumerateNights, generateConfirmationCode, todayInTimezone } from '../shared/pricing';
 import { insertBookingAddOns, priceAddOnLines } from './addOnPricing';
 import { markPropertyDirtyInline } from './channel/ari';
 import { residenceProgress } from './residence';
@@ -248,7 +248,9 @@ export const kpiSummary = query({
       if (resolution) conflictResolutionMinutes.push(Math.max(0, (resolution.ts - booking.createdAt) / 60_000));
     }
     const feedStates = units.flatMap((unit) => unit.icalImports);
-    const lastSyncAt = feedStates.reduce((latest, feed) => Math.max(latest, feed.lastSyncedAt ?? 0), 0);
+    // Unit rows are written only on a status change; the newest sync-history row is the real last sync.
+    const latestRun = await ctx.db.query('icalSyncRuns').withIndex('by_property_ts', (q) => q.eq('propertyId', args.propertyId)).order('desc').first();
+    const lastSyncAt = Math.max(latestRun?.ts ?? 0, feedStates.reduce((latest, feed) => Math.max(latest, feed.lastSyncedAt ?? 0), 0));
     return {
       since: args.since,
       totalBookings: live.length,
@@ -734,6 +736,53 @@ function guestLabel(name: string | undefined, booking: { status: string; source:
   if (booking.status === 'external' || booking.source.startsWith('ical:')) return `Khách ${booking.source.replace(/^ical:/, '') || 'OTA'}`;
   return booking.notes[0]?.text ?? 'Khách OTA';
 }
+
+/**
+ * The header bell's open work, read narrowly so it stays cheap on every admin
+ * page: pending/hold requests via the status index, and today's in-house stays
+ * for missing residence declarations. It never reads the whole booking book,
+ * the units table or add-ons, so an iCal sync or an unrelated booking edit does
+ * not re-run it. Rows carry only the fields `derivedNotifications` uses.
+ */
+export const bellItems = query({
+  args: { propertyId: v.id('properties'), today: v.string() },
+  handler: async (ctx, args) => {
+    await requireRead(ctx, args.propertyId);
+    if (!isIsoDate(args.today)) throw new ConvexError('INVALID_DATE');
+    const requests = [
+      ...(await ctx.db.query('bookings').withIndex('by_status_holdExpires', (q) => q.eq('status', 'pending')).take(500)),
+      ...(await ctx.db.query('bookings').withIndex('by_status_holdExpires', (q) => q.eq('status', 'hold')).take(500)),
+    ].filter((row) => row.propertyId === args.propertyId);
+    // Stays that started up to 60 nights ago and are still running today.
+    const inHouse = (await ctx.db
+      .query('bookings')
+      .withIndex('by_property_checkIn', (q) => q.eq('propertyId', args.propertyId).gte('checkIn', addDays(args.today, -60)).lte('checkIn', args.today))
+      .take(500))
+      .filter((row) => row.checkOut > args.today && ['pending', 'confirmed', 'checked_in'].includes(row.status));
+    const byId = new Map([...requests, ...inHouse].map((row) => [String(row._id), row]));
+    const unitNames = new Map<string, string>();
+    const rows = [];
+    for (const booking of byId.values()) {
+      if (!unitNames.has(String(booking.unitId))) unitNames.set(String(booking.unitId), (await ctx.db.get(booking.unitId))?.name ?? 'Chỗ nghỉ');
+      const guest = booking.guestId ? await ctx.db.get(booking.guestId) : null;
+      rows.push({
+        bookingId: booking._id,
+        confirmationCode: booking.confirmationCode,
+        guestName: guestLabel(guest?.name, booking),
+        unitId: booking.unitId,
+        unitName: unitNames.get(String(booking.unitId))!,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        status: booking.status,
+        source: booking.source,
+        createdAt: booking.createdAt,
+        syncConflict: false,
+        residenceMissing: ['pending', 'confirmed', 'checked_in'].includes(booking.status) ? (await residenceProgress(ctx, booking)).missing : 0,
+      });
+    }
+    return rows;
+  },
+});
 
 export const adminSnapshot = query({
   args: { propertyId: v.id('properties'), startDate: v.string(), endDate: v.string() },

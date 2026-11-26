@@ -5,7 +5,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { derivedNotifications } from '../../lib/songShift';
-import { useShiftSnapshot } from './FrontDeskShift';
+import type { BookingRow } from '../../lib/songAdminTypes';
+import { todayIso } from '../../lib/dates';
 
 type Tab = 'all' | 'unread' | 'alert';
 type Item = { id: string; tone: 'alert' | 'info'; title: string; detail: string; to: string; unread: boolean; alertId?: Id<'icalSyncAlerts'>; ts?: number };
@@ -19,7 +20,10 @@ const TABS: Array<[Tab, string]> = [['all', 'Tất cả'], ['unread', 'Chưa đ�
  * stays until the work is done.
  */
 export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<'properties'>; timezone: string }) {
-  const { today, snapshot } = useShiftSnapshot(propertyId, timezone);
+  const today = todayIso(timezone);
+  // A narrow query (pending requests + today's in-house stays), not the full admin snapshot:
+  // the bell sits on every admin page, so it must not re-read the booking book on each iCal sync.
+  const rows = useQuery((api as any).songHomestay.bellItems, { propertyId, today }) as BookingRow[] | undefined;
   const inbox = useQuery(api.icalAlerts.inbox, { propertyId });
   const markRead = useMutation(api.icalAlerts.markRead);
   const markAllRead = useMutation(api.icalAlerts.markAllRead);
@@ -36,7 +40,7 @@ export function SongNotificationBell({ propertyId, timezone }: { propertyId: Id<
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
   }, [open]);
 
-  const derived: Item[] = snapshot ? derivedNotifications(snapshot.bookings, today).map((item) => ({ ...item, unread: true })) : [];
+  const derived: Item[] = rows ? derivedNotifications(rows, today).map((item) => ({ ...item, unread: true })) : [];
   const persisted: Item[] = (inbox?.alerts ?? []).map((alert) => ({
     id: `alert:${alert._id}`,
     tone: alert.kind === 'sync_recovered' ? 'info' : 'alert',
