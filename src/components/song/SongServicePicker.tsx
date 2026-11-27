@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Bike, CarFront, Check, Plus, Trash2, X, type LucideIcon } from 'lucide-react';
 
 import { stayPerkFreeUnits } from '../../../shared/pricing';
@@ -51,8 +52,13 @@ export function selectionQuantities(selections: ServiceSelection[]): Record<stri
 function Modal({ title, subtitle, icon: Icon, onClose, children }: { title: string; subtitle: string; icon: LucideIcon; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); }, []);
-  return (
-    <dialog ref={ref} onCancel={onClose} aria-labelledby="service-modal-title" className="w-[min(94vw,34rem)] overflow-hidden rounded-3xl p-0 shadow-2xl backdrop:bg-[#082c4f]/60">
+  // The picker sits inside the staff manual-booking <form>. A <form> nested in the DOM
+  // never got its submit handled, so "Thêm vào đơn đặt phòng" did a native GET submit
+  // that reloaded the whole admin ("Checking staff access…") and lost the booking.
+  // Portal the dialog to <body> so its form is never nested, and stop the synthetic
+  // submit (React bubbles through portals) before it reaches the outer booking form.
+  return createPortal(
+    <dialog ref={ref} onCancel={onClose} onSubmit={(event) => event.stopPropagation()} aria-labelledby="service-modal-title" className="w-[min(94vw,34rem)] overflow-hidden rounded-3xl p-0 shadow-2xl backdrop:bg-[#082c4f]/60">
       <div className="flex items-start gap-3 bg-[#eef4fa] px-6 py-5">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-[#1565a8]"><Icon className="h-5 w-5" aria-hidden="true" /></span>
         <div className="flex-1">
@@ -62,7 +68,8 @@ function Modal({ title, subtitle, icon: Icon, onClose, children }: { title: stri
         <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-full p-1 text-slate-500 hover:bg-white"><X className="h-5 w-5" /></button>
       </div>
       <div className="px-6 py-5">{children}</div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 
