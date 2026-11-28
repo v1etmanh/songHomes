@@ -25,6 +25,11 @@ crons.interval('ical import sync', { minutes: 30 }, internal.icalImport.syncAll,
 // No-op unless DEMO_MODE/ALLOW_OTA_SIMULATOR and the simulator is connected.
 crons.daily('ota simulator randomize', { hourUTC: 17, minuteUTC: 30 }, internal.otaSimulator.dailyRandomize, {});
 
+// Demo-only, the reverse direction: each simulated platform pulls the units'
+// public OpenStays iCal export URLs over HTTP, like a real OTA subscription.
+// No-op unless the simulator is enabled. Not in the production crons template.
+crons.interval('ota simulator pull', { minutes: 30 }, internal.otaSimulator.pullAll, {});
+
 // Delete guest identity declarations after their explicit retention window.
 crons.daily('residence data retention', { hourUTC: 18, minuteUTC: 0 }, internal.residence.purgeExpired, {});
 

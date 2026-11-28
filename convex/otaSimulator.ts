@@ -1,17 +1,25 @@
 import { ConvexError, v } from 'convex/values';
-import { internalMutation, internalQuery, mutation, query } from './_generated/server';
-import type { MutationCtx, QueryCtx } from './_generated/server';
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
+import { api, internal } from './_generated/api';
 import { addDays, enumerateNights, todayInTimezone } from '../shared/pricing';
-import { renderIcs } from '../shared/ical';
+import { parseIcs, renderIcs } from '../shared/ical';
 import { requireMutationPropertyCapability, requirePropertyCapability } from './staff';
 import { loadSyncSettings } from './icalAlerts';
-import { EXPORTABLE, exportFeedUrl } from './ical';
+import { exportFeedUrl } from './ical';
 
 // Demo-only simulated booking platforms. Each (unit, platform) listing serves
 // an iCal feed at <CONVEX_SITE_URL>/sim/ical/<token>.ics; OpenStays pulls it
 // through the normal iCal import, so nothing here ever writes `bookings`.
+// The reverse direction is simulated the way a real OTA does it: each listing
+// subscribes to the unit's public OpenStays export URL and pulls it over HTTP
+// (cron + "Kéo lịch ngay"), keeping the calendar of its last good pull.
 // Excluded from production builds (config/production-profile.json).
+
+const PULL_TIMEOUT_MS = 10_000;
+const MAX_PULL_BYTES = 1_000_000;
+const MAX_IMPORTED_EVENTS = 500;
 
 type Platform = 'airbnb' | 'booking';
 const PLATFORMS: Record<Platform, { label: string; prodId: string; summary: string }> = {
@@ -59,6 +67,13 @@ function assertDates(checkIn: string, checkOut: string) {
 
 function overlaps(a: { checkIn: string; checkOut: string }, b: { checkIn: string; checkOut: string }) {
   return a.checkIn < b.checkOut && b.checkIn < a.checkOut;
+}
+
+/** Like a real OTA: nights the platform imported from OpenStays (as of its last pull) cannot be sold. */
+function assertNotImported(listing: Doc<'otaSimListings'>, stay: { checkIn: string; checkOut: string }) {
+  if ((listing.importedEvents ?? []).some((event) => overlaps(event, stay))) {
+    throw new ConvexError({ code: 'SIM_BLOCKED_BY_OPENSTAYS', message: 'Đêm này đã bị khóa bởi lịch nhập từ OpenStays.' });
+  }
 }
 
 function mulberry32(seed: number) {
@@ -291,8 +306,12 @@ export const connect = mutation({
             feedToken: crypto.randomUUID().replaceAll('-', ''),
             active: true,
             createdAt: now,
+            importUrl: exportFeedUrl(unit.icalExportToken),
           });
           listing = (await ctx.db.get(id))!;
+        } else if (listing.importUrl !== exportFeedUrl(unit.icalExportToken)) {
+          // "Kết nối lại": (re)subscribe the platform to the unit's current public export URL.
+          await ctx.db.patch(listing._id, { importUrl: exportFeedUrl(unit.icalExportToken) });
         }
         feeds.push({ label: PLATFORMS[platform].label, url: feedUrl(listing.feedToken) });
       }
@@ -344,14 +363,12 @@ export const platformView = query({
       const reservations = (await reservationsFor(ctx, listing._id))
         .filter((r) => r.checkOut >= addDays(today, -7))
         .sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1));
-      // What this platform imports from the unit's OpenStays export feed: every
-      // OpenStays booking shows as "Not available" here as soon as it exists.
-      const fromOpenStays = (await ctx.db
-        .query('bookings')
-        .withIndex('by_unit_checkIn', (q) => q.eq('unitId', unit._id).gte('checkIn', addDays(today, -7)))
-        .collect())
-        .filter((b) => EXPORTABLE.has(b.status))
-        .map((b) => ({ checkIn: b.checkIn, checkOut: b.checkOut, code: b.confirmationCode }));
+      // What this platform imported from the unit's OpenStays export URL at its
+      // last pull — not the live database: a booking made since then is not
+      // blocked here yet, exactly like a real OTA between two pulls.
+      const fromOpenStays = (listing.importedEvents ?? [])
+        .filter((event) => event.checkOut >= addDays(today, -7))
+        .map((event) => ({ checkIn: event.checkIn, checkOut: event.checkOut }));
       rows.push({
         listingId: listing._id,
         active: listing.active,
@@ -360,8 +377,9 @@ export const platformView = query({
         sortOrder: unit.sortOrder,
         photoUrl: unitType?.photoUrls?.[0] ?? null,
         feedUrl: feedUrl(listing.feedToken),
-        openStaysFeedUrl: exportFeedUrl(unit.icalExportToken),
+        openStaysFeedUrl: listing.importUrl ?? exportFeedUrl(unit.icalExportToken),
         fromOpenStays,
+        pull: { at: listing.lastPullAt ?? null, ok: listing.lastPullOk ?? null, status: listing.lastPullStatus ?? '', events: listing.importedEvents?.length ?? 0 },
         reservations: reservations.map((r) => ({
           reservationId: r._id, uid: r.uid, checkIn: r.checkIn, checkOut: r.checkOut, guestLabel: r.guestLabel, status: r.status, origin: r.origin,
         })),
@@ -385,6 +403,7 @@ export const addReservation = mutation({
   handler: async (ctx, args) => {
     const listing = await loadListing(ctx, args.listingId, 'ota_sim.reservation.add');
     assertDates(args.checkIn, args.checkOut);
+    assertNotImported(listing, args);
     const own = (await reservationsFor(ctx, listing._id)).filter((r) => r.status === 'active');
     if (own.some((r) => overlaps(r, args))) {
       throw new ConvexError({ code: 'SIM_OVERLAP', message: 'Nền tảng này đã có đặt phòng trong khoảng ngày đó.' });
@@ -417,8 +436,9 @@ export const moveReservation = mutation({
   handler: async (ctx, args) => {
     const reservation = await ctx.db.get(args.reservationId);
     if (!reservation || reservation.status !== 'active') throw new ConvexError('RESERVATION_NOT_FOUND');
-    await loadListing(ctx, reservation.listingId, 'ota_sim.reservation.move');
+    const listing = await loadListing(ctx, reservation.listingId, 'ota_sim.reservation.move');
     assertDates(args.checkIn, args.checkOut);
+    assertNotImported(listing, args);
     const own = (await reservationsFor(ctx, reservation.listingId)).filter((r) => r.status === 'active' && r._id !== reservation._id);
     if (own.some((r) => overlaps(r, args))) {
       throw new ConvexError({ code: 'SIM_OVERLAP', message: 'Nền tảng này đã có đặt phòng trong khoảng ngày đó.' });
@@ -458,7 +478,8 @@ export const resetSimulation = mutation({
       await ctx.db.delete(row._id);
     }
     for (const listing of await listingsFor(ctx, property._id)) {
-      if (!listing.active) await ctx.db.patch(listing._id, { active: true });
+      // Back to "never pulled": the platform has not seen OpenStays' calendar yet.
+      await ctx.db.patch(listing._id, { active: true, importedEvents: undefined, lastPullAt: undefined, lastPullOk: undefined, lastPullStatus: undefined });
     }
     await seedDefaults(ctx, property);
     return { reset: true };
@@ -512,5 +533,97 @@ export const feedText = internalQuery({
         stampMs: r.updatedAt,
       })),
     });
+  },
+});
+
+type PullTally = { listings: number; ok: number; failed: number; events: number };
+
+/** Active listings subscribed to an OpenStays export URL, optionally one platform only. */
+export const pullTargets = internalQuery({
+  args: { platform: v.optional(platformArg) },
+  handler: async (ctx, args) => {
+    if (!simulatorEnabled()) return null;
+    const property = await ctx.db.query('properties').withIndex('by_slug', (q) => q.eq('slug', 'song-homestay')).unique();
+    if (!property) return null;
+    const listings = (await listingsFor(ctx, property._id))
+      .filter((l) => l.active && l.importUrl && (!args.platform || l.platform === args.platform));
+    return { propertyId: property._id, listings: listings.map((l) => ({ listingId: l._id, url: l.importUrl! })) };
+  },
+});
+
+/**
+ * Record one pull. A good pull replaces the imported calendar; a failed pull
+ * keeps the last known one (a real OTA keeps blocking what it saw last).
+ */
+export const applyPull = internalMutation({
+  args: {
+    listingId: v.id('otaSimListings'),
+    ok: v.boolean(),
+    status: v.string(),
+    events: v.optional(v.array(v.object({ uid: v.string(), checkIn: v.string(), checkOut: v.string(), summary: v.optional(v.string()) }))),
+  },
+  handler: async (ctx, args) => {
+    const listing = await ctx.db.get(args.listingId);
+    if (!listing) return;
+    await ctx.db.patch(listing._id, {
+      lastPullAt: Date.now(),
+      lastPullOk: args.ok,
+      lastPullStatus: args.status.slice(0, 200),
+      ...(args.ok ? { importedEvents: (args.events ?? []).slice(0, MAX_IMPORTED_EVENTS) } : {}),
+    });
+  },
+});
+
+async function pullOne(ctx: ActionCtx, listingId: Id<'otaSimListings'>, url: string): Promise<{ ok: boolean; events: number }> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(PULL_TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (text.length > MAX_PULL_BYTES) throw new Error('iCal vượt quá 1 MB');
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Không phải tệp iCal');
+    const { events } = parseIcs(text);
+    const rows = events.map((e) => ({ uid: e.uid, checkIn: e.startDate, checkOut: e.endDate, ...(e.summary ? { summary: e.summary.slice(0, 120) } : {}) }));
+    await ctx.runMutation(internal.otaSimulator.applyPull, { listingId, ok: true, status: `ok: ${rows.length} sự kiện`, events: rows });
+    return { ok: true, events: rows.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.runMutation(internal.otaSimulator.applyPull, { listingId, ok: false, status: message });
+    return { ok: false, events: 0 };
+  }
+}
+
+async function pullListings(ctx: ActionCtx, targets: Array<{ listingId: Id<'otaSimListings'>; url: string }>): Promise<PullTally> {
+  const tally: PullTally = { listings: targets.length, ok: 0, failed: 0, events: 0 };
+  // One failing feed never stops the others (same isolation as icalImport.syncAll).
+  for (const target of targets) {
+    const result = await pullOne(ctx, target.listingId, target.url);
+    if (result.ok) { tally.ok += 1; tally.events += result.events; } else tally.failed += 1;
+  }
+  return tally;
+}
+
+/** Cron: every simulated platform pulls OpenStays' public iCal links. No-op when the simulator is off. */
+export const pullAll = internalAction({
+  args: {},
+  handler: async (ctx): Promise<PullTally | { skipped: string }> => {
+    const targets = await ctx.runQuery(internal.otaSimulator.pullTargets, {});
+    if (!targets) return { skipped: 'disabled' };
+    return await pullListings(ctx, targets.listings);
+  },
+});
+
+/** "Kéo lịch từ OpenStays ngay" on a platform page. */
+export const pullNow = action({
+  args: { platform: platformArg },
+  handler: async (ctx, args): Promise<PullTally> => {
+    assertEnabled();
+    const targets = await ctx.runQuery(internal.otaSimulator.pullTargets, { platform: args.platform });
+    if (!targets) throw new ConvexError('OTA_SIMULATOR_DISABLED');
+    if (process.env.DEMO_MODE !== 'true') {
+      const access = await ctx.runQuery(api.staff.propertyContext, { propertyId: targets.propertyId });
+      if (!access.capabilities.includes('property.configure')) throw new ConvexError('CAPABILITY_DENIED');
+    }
+    if (!targets.listings.length) throw new ConvexError({ code: 'SIM_NOT_CONNECTED', message: 'Chưa kết nối nền tảng giả lập (bấm "Kết nối lại" để đăng ký link iCal của OpenStays).' });
+    return await pullListings(ctx, targets.listings);
   },
 });

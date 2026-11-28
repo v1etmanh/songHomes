@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useMutation, useQuery } from 'convex/react';
-import { ArrowLeft, ArrowRight, CalendarPlus, Copy, RefreshCw, Shuffle, Zap } from 'lucide-react';
+import { useAction, useMutation, useQuery } from 'convex/react';
+import { ArrowLeft, ArrowRight, CalendarPlus, Copy, Download, RefreshCw, Shuffle, Zap } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -45,6 +45,7 @@ export function OtaSimulatorLanding() {
     ['2', 'OpenStays kéo lịch về', 'Tự động mỗi 30 phút, hoặc ngay khi nhân viên bấm "Đồng bộ ngay".'],
     ['3', 'Phát hiện trùng lịch', 'Đêm đã có booking nội bộ hoặc kênh khác sẽ được gắn cờ, không ghi đè.'],
     ['4', 'Báo nhân viên', 'Cảnh báo vào hộp thư trong app và email của nhân viên.'],
+    ['5', 'Nền tảng kéo lịch OpenStays', 'Chiều ngược lại: Airbnb/Booking.com giả lập gọi link iCal công khai của OpenStays mỗi 30 phút (hoặc khi bấm "Kéo lịch từ OpenStays ngay") và khóa các đêm đó.'],
   ];
   return (
     <div className="min-h-screen bg-slate-50">
@@ -52,7 +53,7 @@ export function OtaSimulatorLanding() {
         <SimulatorBadge />
         <h1 className="mt-4 text-3xl font-extrabold text-[#10234a]">Trạm mô phỏng nền tảng đặt phòng</h1>
         <p className="mt-2 max-w-3xl text-slate-600">Hai nền tảng dưới đây chạy ngay trong hệ thống để trình diễn đồng bộ lịch qua iCal cho {status.connected ? `${status.listings.length / 2} cơ sở Sóng Homestay` : 'Sóng Homestay'}. Thêm, hủy hoặc dời đặt phòng ở đây, rồi sang OpenStays đồng bộ để xem lịch cập nhật và cảnh báo trùng.</p>
-        <ol className="mt-8 grid gap-4 md:grid-cols-4">
+        <ol className="mt-8 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
           {steps.map(([n, title, text]) => (
             <li key={n} className="rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[#10234a] text-sm font-bold text-white">{n}</span>
@@ -103,6 +104,8 @@ export function OtaSimulatorPlatformPage() {
   const status = useQuery(api.otaSimulator.status, {});
   const view = useQuery(api.otaSimulator.platformView, status?.enabled ? { platform } : 'skip');
   const randomize = useMutation(api.otaSimulator.randomizeNow);
+  const pullNow = useAction(api.otaSimulator.pullNow);
+  const [pulling, setPulling] = useState(false);
   const [message, setMessage] = useState('');
   const theme = THEME[platform];
 
@@ -124,6 +127,19 @@ export function OtaSimulatorPlatformPage() {
     }
   }
 
+  async function pull() {
+    setMessage('');
+    setPulling(true);
+    try {
+      const t = await pullNow({ platform });
+      setMessage(`${theme.name} đã kéo ${t.ok}/${t.listings} link iCal của OpenStays (${t.events} sự kiện)${t.failed ? `, ${t.failed} link lỗi — giữ lịch của lần kéo trước` : ''}.`);
+    } catch (error) {
+      setMessage(extractErrorMessage(error));
+    } finally {
+      setPulling(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className={theme.header}>
@@ -137,6 +153,7 @@ export function OtaSimulatorPlatformPage() {
             <SimulatorBadge />
           </div>
           <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={pulling} className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm disabled:opacity-60" onClick={() => void pull()}><Download className="h-4 w-4" />{pulling ? 'Đang kéo lịch…' : 'Kéo lịch từ OpenStays ngay'}</button>
             <button type="button" className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm" onClick={() => void churn('daily')}><Shuffle className="h-4 w-4" />Sinh thay đổi ngẫu nhiên</button>
             <button type="button" className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm" onClick={() => void churn('conflict')}><Zap className="h-4 w-4" />Tạo xung đột</button>
             <Link to="/admin/ical" className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${theme.accent}`}><RefreshCw className="h-4 w-4" />Sang OpenStays đồng bộ ngay</Link>
@@ -154,6 +171,20 @@ export function OtaSimulatorPlatformPage() {
   );
 }
 
+/** When this platform last pulled the unit's OpenStays link, and how it went. */
+function PullStatus({ pull, url }: { pull: ListingView['pull']; url: string }) {
+  const time = pull.at ? new Date(pull.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : null;
+  return (
+    <p className={`mt-1 text-xs ${pull.ok === false ? 'font-semibold text-red-600' : 'text-slate-500'}`} title={url}>
+      {!time
+        ? 'Chưa kéo lịch từ OpenStays — các đêm đã đặt bên OpenStays chưa bị khóa ở đây.'
+        : pull.ok
+          ? `Lần kéo cuối ${time} · ${pull.events} sự kiện từ OpenStays.`
+          : `Lần kéo cuối ${time} lỗi (${pull.status}) · vẫn giữ ${pull.events} sự kiện của lần kéo trước.`}
+    </p>
+  );
+}
+
 type ListingView = {
   listingId: Id<'otaSimListings'>;
   active: boolean;
@@ -162,7 +193,8 @@ type ListingView = {
   photoUrl: string | null;
   feedUrl: string;
   openStaysFeedUrl: string;
-  fromOpenStays: Array<{ checkIn: string; checkOut: string; code: string }>;
+  fromOpenStays: Array<{ checkIn: string; checkOut: string }>;
+  pull: { at: number | null; ok: boolean | null; status: string; events: number };
   reservations: Array<{ reservationId: Id<'otaSimReservations'>; uid: string; checkIn: string; checkOut: string; guestLabel: string; status: 'active' | 'cancelled'; origin: string }>;
 };
 
@@ -223,7 +255,7 @@ function ListingCard({ listing, today, platform, focused }: { listing: ListingVi
                 const booked = active.find((r) => r.checkIn <= day && r.checkOut > day);
                 const blocked = !booked && listing.fromOpenStays.find((b) => b.checkIn <= day && b.checkOut > day);
                 return (
-                  <div key={day} title={booked ? `${booked.guestLabel} · ${booked.checkIn} → ${booked.checkOut}` : blocked ? `Không còn trống · nhập từ OpenStays (${blocked.code})` : `${day} trống`} className="text-center">
+                  <div key={day} title={booked ? `${booked.guestLabel} · ${booked.checkIn} → ${booked.checkOut}` : blocked ? `Không còn trống · nhập từ link iCal OpenStays (${blocked.checkIn} → ${blocked.checkOut})` : `${day} trống`} className="text-center">
                     <div className={`h-7 rounded ${booked ? theme.bar : blocked ? 'bg-slate-400 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]' : 'bg-slate-100'}`} />
                     <span className="text-[10px] text-slate-500">{day.slice(8)}</span>
                   </div>
@@ -236,6 +268,7 @@ function ListingCard({ listing, today, platform, focused }: { listing: ListingVi
             <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-slate-400" />Không còn trống — {listing.fromOpenStays.length} booking nhập từ link iCal của OpenStays</span>
             <button type="button" className="font-semibold text-slate-600 underline" onClick={() => void navigator.clipboard?.writeText(listing.openStaysFeedUrl)}>Copy link iCal nhập</button>
           </p>
+          <PullStatus pull={listing.pull} url={listing.openStaysFeedUrl} />
 
           <ul className="mt-4 space-y-2">
             {listing.reservations.map((r) => (

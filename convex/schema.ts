@@ -1271,6 +1271,19 @@ export default defineSchema({
     feedToken: v.string(),
     active: v.boolean(),
     createdAt: v.number(),
+    // The reverse direction, like a real OTA subscribed to OpenStays: the
+    // platform pulls the unit's public export URL over HTTP and keeps the
+    // calendar of its last successful pull (a failed pull keeps the old one).
+    importUrl: v.optional(v.string()),
+    importedEvents: v.optional(v.array(v.object({
+      uid: v.string(),
+      checkIn: v.string(),
+      checkOut: v.string(),
+      summary: v.optional(v.string()),
+    }))),
+    lastPullAt: v.optional(v.number()),
+    lastPullOk: v.optional(v.boolean()),
+    lastPullStatus: v.optional(v.string()),
   })
     .index('by_property', ['propertyId'])
     .index('by_feedToken', ['feedToken']),
