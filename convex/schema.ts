@@ -1320,7 +1320,9 @@ export default defineSchema({
     bookingCode: v.string(),
     otherBookingId: v.optional(v.id('bookings')),
     otherBookingCode: v.optional(v.string()),
-    method: v.union(v.literal('move_unit'), v.literal('cancel_booking'), v.literal('acknowledge')),
+    // ota_update: the clash disappeared because the booking was cancelled or
+    // re-dated on the OTA itself (learned through the normal iCal pull).
+    method: v.union(v.literal('move_unit'), v.literal('cancel_booking'), v.literal('acknowledge'), v.literal('ota_update')),
     detail: v.string(),
     note: v.optional(v.string()),
     byName: v.string(),

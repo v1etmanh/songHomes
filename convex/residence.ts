@@ -198,6 +198,17 @@ export const registerForGuest = mutation({
       throw new ConvexError({ code: 'INVALID_DATE_RANGE', message: 'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.' });
     }
 
+    if (args.nationality !== undefined && !args.nationality.trim()) {
+      throw new ConvexError({ code: 'NATIONALITY_REQUIRED', message: 'Vui lòng nhập quốc tịch.' });
+    }
+    if (args.registrationType === 'tam_tru') {
+      const existing = await ctx.db
+        .query('residenceRegistrations')
+        .withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
+        .collect();
+      assertDistinctResident(existing, fullName);
+    }
+
     const now = Date.now();
     const registrationId = await ctx.db.insert('residenceRegistrations', {
       propertyId: booking.propertyId,
@@ -306,6 +317,9 @@ export const registerForMyBooking = mutation({
     }
     const reason = args.reason.trim();
     if (!reason) throw new ConvexError({ code: 'REASON_REQUIRED', message: 'Vui lòng nhập lý do lưu trú.' });
+    if (args.nationality !== undefined && !args.nationality.trim()) {
+      throw new ConvexError({ code: 'NATIONALITY_REQUIRED', message: 'Vui lòng nhập quốc tịch.' });
+    }
     if (!args.consent) {
       throw new ConvexError({ code: 'CONSENT_REQUIRED', message: 'Bạn cần đồng ý để cơ sở lưu trú lưu và xử lý thông tin.' });
     }
@@ -326,6 +340,7 @@ export const registerForMyBooking = mutation({
     if (declared.some((row) => row.documentNumber === documentNumber)) {
       throw new ConvexError({ code: 'DUPLICATE_DOCUMENT', message: 'Giấy tờ này đã được khai báo cho đơn đặt phòng.' });
     }
+    assertDistinctResident(existing, fullName);
 
     const now = Date.now();
     const registrationId = await ctx.db.insert('residenceRegistrations', {
@@ -644,6 +659,18 @@ export const saveAbsence = mutation({
   },
 });
 
+
+/**
+ * Each adult is declared under their own name. A second tạm trú with the same
+ * name on one booking is the "same name twice" bug (a form that kept the
+ * previous guest's name), so it is refused instead of stored.
+ */
+function assertDistinctResident(existing: Doc<'residenceRegistrations'>[], fullName: string) {
+  const fold = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+  if (existing.some((row) => row.registrationType === 'tam_tru' && fold(row.fullName) === fold(fullName))) {
+    throw new ConvexError({ code: 'DUPLICATE_NAME', message: `${fullName.trim()} đã được khai báo cho đơn này. Vui lòng nhập họ tên của khách tiếp theo.` });
+  }
+}
 
 function cleanName(value: string) {
   const name = value.trim().replace(/\s+/g, ' ');

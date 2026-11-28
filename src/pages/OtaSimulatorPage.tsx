@@ -179,6 +179,7 @@ function ListingCard({ listing, today, platform, focused }: { listing: ListingVi
   const active = listing.reservations.filter((r) => r.status === 'active');
   const days = Array.from({ length: 30 }, (_, i) => addDays(today, i));
 
+  const SYNC_HINT = 'Đã cập nhật trên nền tảng. Sau lần đồng bộ iCal tiếp theo (hoặc bấm "Đồng bộ ngay"), cảnh báo trùng lịch liên quan sẽ chuyển sang mục "Đã xử lý".';
   async function attempt(task: () => Promise<unknown>, ok?: string) {
     setMessage('');
     try {
@@ -242,9 +243,9 @@ function ListingCard({ listing, today, platform, focused }: { listing: ListingVi
                 <span><strong>{r.guestLabel}</strong> · {r.checkIn} → {r.checkOut}{r.origin === 'random' ? <span className="ml-2 rounded bg-violet-50 px-1.5 text-xs text-violet-700 no-underline">ngẫu nhiên</span> : null}</span>
                 {r.status === 'active' ? (
                   <span className="flex gap-2 text-xs font-bold">
-                    <button type="button" className="text-slate-600" onClick={() => void attempt(() => move({ reservationId: r.reservationId, checkIn: addDays(r.checkIn, -1), checkOut: addDays(r.checkOut, -1) }))}>← Dời 1 ngày</button>
-                    <button type="button" className="text-slate-600" onClick={() => void attempt(() => move({ reservationId: r.reservationId, checkIn: addDays(r.checkIn, 1), checkOut: addDays(r.checkOut, 1) }))}>Dời 1 ngày →</button>
-                    <button type="button" className="text-red-600" onClick={() => void attempt(() => cancel({ reservationId: r.reservationId }))}>Hủy</button>
+                    <button type="button" className="text-slate-600" onClick={() => void attempt(() => move({ reservationId: r.reservationId, checkIn: addDays(r.checkIn, -1), checkOut: addDays(r.checkOut, -1) }), SYNC_HINT)}>← Dời 1 ngày</button>
+                    <button type="button" className="text-slate-600" onClick={() => void attempt(() => move({ reservationId: r.reservationId, checkIn: addDays(r.checkIn, 1), checkOut: addDays(r.checkOut, 1) }), SYNC_HINT)}>Dời 1 ngày →</button>
+                    <button type="button" className="text-red-600" onClick={() => void attempt(() => cancel({ reservationId: r.reservationId }), SYNC_HINT)}>Hủy</button>
                   </span>
                 ) : <span className="text-xs">Đã hủy</span>}
               </li>

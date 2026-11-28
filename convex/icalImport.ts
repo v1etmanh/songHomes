@@ -585,6 +585,7 @@ export const applyUnitImport = internalMutation({
     // invocation (idempotent anyway).
     if (nightsChanged) {
       await markPropertyDirtyInline(ctx, unit.propertyId);
+      await logOtaResolutions(ctx, unit, args.label, source, unitBookings, now);
     }
 
     return { inserted, updated, removed, conflicts, newConflictBookingIds };
@@ -838,6 +839,60 @@ async function healExternalBookingsOnUnit(ctx: MutationCtx, unitId: Id<'units'>,
       },
       now,
     );
+  }
+}
+
+/**
+ * A double booking that disappears because the guest's stay was cancelled or
+ * re-dated on Airbnb/Booking.com is handled too: log it in conflictResolutions
+ * so the "Đã xử lý" tab and the dashboard count it like a desk resolution.
+ * Only this feed's bookings change inside applyUnitImport, so every pair that
+ * vanished involves one of them.
+ */
+async function logOtaResolutions(
+  ctx: MutationCtx,
+  unit: Doc<'units'>,
+  label: string,
+  source: string,
+  before: Doc<'bookings'>[],
+  now: number,
+): Promise<void> {
+  const pairKey = (a: Id<'bookings'>, b: Id<'bookings'>) => [String(a), String(b)].sort().join(':');
+  const beforePairs = findConflictPairs(before);
+  if (!beforePairs.length) return;
+  const after = await ctx.db
+    .query('bookings')
+    .withIndex('by_unit_checkIn', (q) => q.eq('unitId', unit._id))
+    .collect();
+  const afterKeys = new Set(findConflictPairs(after).map(({ a, b }) => pairKey(a._id, b._id)));
+  const afterById = new Map(after.map((b) => [String(b._id), b]));
+  const day = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
+  for (const { a, b, overlapStart, overlapEnd } of beforePairs) {
+    if (afterKeys.has(pairKey(a._id, b._id))) continue;
+    const changed = [a, b].find((row) => row.source === source);
+    if (!changed) continue;
+    const other = changed._id === a._id ? b : a;
+    const current = afterById.get(String(changed._id));
+    const detail = !current || current.status === 'cancelled'
+      ? `${changed.confirmationCode} đã hủy trên ${label}`
+      : current.unitId !== unit._id
+        ? `${changed.confirmationCode} được chuyển căn`
+        : `${changed.confirmationCode} đổi ngày trên ${label}: ${day(current.checkIn)} → ${day(current.checkOut)}`;
+    await ctx.db.insert('conflictResolutions', {
+      propertyId: unit.propertyId,
+      unitId: unit._id,
+      unitName: unit.name,
+      overlapStart,
+      overlapEnd,
+      bookingId: changed._id,
+      bookingCode: changed.confirmationCode,
+      otherBookingId: other._id,
+      otherBookingCode: other.confirmationCode,
+      method: 'ota_update',
+      detail,
+      byName: `${label} (đồng bộ iCal)`,
+      at: now,
+    });
   }
 }
 

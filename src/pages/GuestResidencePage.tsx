@@ -10,6 +10,7 @@ import { ErrorMessage, extractErrorMessage } from '../components/ErrorMessage';
 import { Spinner } from '../components/Spinner';
 import { formatDisplayDate } from '../lib/dates';
 import { formatMoney } from '../lib/money';
+import { fieldClass, filled, missingFields, missingMessage } from '../lib/residenceForm';
 
 type DocumentType = 'cccd' | 'cmnd' | 'passport';
 const DOCUMENT_LABELS: Record<string, string> = {
@@ -221,10 +222,27 @@ function DeclarationForm({ bookingId, checkIn, checkOut, defaultFullName, person
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const cls = (key: string, base = 'field-input') => fieldClass(base, missing, key);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    // Every field is mandatory: name the missing ones instead of sending a partial declaration.
+    const gaps = missingFields([
+      { key: 'fullName', label: 'Họ và tên', filled: filled(fullName) },
+      { key: 'documentNumber', label: `Số ${DOCUMENT_LABELS[documentType].toLowerCase()}`, filled: filled(documentNumber) },
+      { key: 'nationality', label: 'Quốc tịch', filled: filled(nationality) },
+      { key: 'reason', label: 'Lý do lưu trú', filled: reasonChoice === 'Khác' ? filled(reasonOther) : filled(reasonChoice) },
+      { key: 'from', label: 'Lưu trú từ ngày', filled: filled(from) },
+      { key: 'to', label: 'Đến ngày', filled: filled(to) },
+      { key: 'consent', label: 'Đồng ý lưu thông tin', filled: consent },
+    ]);
+    setMissing(new Set(gaps.map((gap) => gap.key)));
+    if (gaps.length) {
+      setError(missingMessage(gaps));
+      return;
+    }
     setSubmitting(true);
     try {
       await register({
@@ -232,7 +250,7 @@ function DeclarationForm({ bookingId, checkIn, checkOut, defaultFullName, person
         fullName,
         documentType,
         documentNumber,
-        nationality: documentType === 'passport' ? nationality : 'Việt Nam',
+        nationality: nationality.trim(),
         reason: reasonChoice === 'Khác' ? reasonOther : reasonChoice,
         checkInDate: from,
         checkOutDate: to,
@@ -246,10 +264,10 @@ function DeclarationForm({ bookingId, checkIn, checkOut, defaultFullName, person
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 border-t border-slate-100 bg-slate-50/60 px-5 py-5">
+    <form onSubmit={submit} noValidate className="space-y-4 border-t border-slate-100 bg-slate-50/60 px-5 py-5">
       <h3 className="font-bold text-slate-900">Khai báo cho khách thứ {personNumber}</h3>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block sm:col-span-2"><span className="field-label">Họ và tên (như trên giấy tờ)</span><input className="field-input" value={fullName} onChange={(e) => setFullName(e.target.value)} required /></label>
+        <label className="block sm:col-span-2"><span className="field-label">Họ và tên (như trên giấy tờ)</span><input className={cls('fullName')} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="VD: Nguyễn Thị Mai Linh" required /></label>
         <label className="block"><span className="field-label">Loại giấy tờ</span>
           <select className="field-input" value={documentType} onChange={(e) => setDocumentType(e.target.value as DocumentType)}>
             <option value="cccd">{DOCUMENT_LABELS.cccd}</option>
@@ -258,24 +276,24 @@ function DeclarationForm({ bookingId, checkIn, checkOut, defaultFullName, person
           </select>
         </label>
         <label className="block"><span className="field-label">Số {DOCUMENT_LABELS[documentType].toLowerCase()}</span>
-          <input className="field-input font-mono" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} inputMode={documentType === 'passport' ? 'text' : 'numeric'} placeholder={documentType === 'cccd' ? '12 chữ số' : documentType === 'cmnd' ? '9 hoặc 12 chữ số' : 'VD: C1234567'} required />
+          <input className={cls('documentNumber', 'field-input font-mono')} value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} inputMode={documentType === 'passport' ? 'text' : 'numeric'} placeholder={documentType === 'cccd' ? '12 chữ số' : documentType === 'cmnd' ? '9 hoặc 12 chữ số' : 'VD: C1234567'} required />
         </label>
-        {documentType === 'passport' ? <label className="block"><span className="field-label">Quốc tịch</span><input className="field-input" value={nationality} onChange={(e) => setNationality(e.target.value)} required /></label> : null}
+        <label className="block"><span className="field-label">Quốc tịch</span><input className={cls('nationality')} value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="VD: Việt Nam" required /></label>
         <label className="block"><span className="field-label">Lý do lưu trú</span>
           <select className="field-input" value={reasonChoice} onChange={(e) => setReasonChoice(e.target.value)}>
             {REASONS.map((r) => <option key={r}>{r}</option>)}
           </select>
         </label>
-        {reasonChoice === 'Khác' ? <label className="block"><span className="field-label">Lý do khác</span><input className="field-input" value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} required /></label> : null}
-        <label className="block"><span className="field-label">Lưu trú từ ngày</span><input className="field-input" type="date" min={checkIn} max={checkOut} value={from} onChange={(e) => setFrom(e.target.value)} required /></label>
-        <label className="block"><span className="field-label">Đến ngày</span><input className="field-input" type="date" min={checkIn} max={checkOut} value={to} onChange={(e) => setTo(e.target.value)} required /></label>
+        {reasonChoice === 'Khác' ? <label className="block"><span className="field-label">Lý do khác</span><input className={cls('reason')} value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} required /></label> : null}
+        <label className="block"><span className="field-label">Lưu trú từ ngày</span><input className={cls('from')} type="date" min={checkIn} max={checkOut} value={from} onChange={(e) => setFrom(e.target.value)} required /></label>
+        <label className="block"><span className="field-label">Đến ngày</span><input className={cls('to')} type="date" min={checkIn} max={checkOut} value={to} onChange={(e) => setTo(e.target.value)} required /></label>
       </div>
-      <label className="flex items-start gap-2 text-sm text-slate-600">
+      <label className={`flex items-start gap-2 text-sm ${missing.has('consent') ? 'text-red-700' : 'text-slate-600'}`}>
         <input type="checkbox" className="mt-1" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
         Tôi đồng ý để cơ sở lưu trú lưu và dùng thông tin này để thông báo lưu trú với cơ quan công an theo quy định. Dữ liệu được xóa sau 180 ngày.
       </label>
       {error ? <ErrorMessage message={error} /> : null}
-      <button type="submit" className="btn-primary" disabled={submitting || !consent}>{submitting ? 'Đang gửi…' : 'Gửi tờ khai'}</button>
+      <button type="submit" className="btn-primary" disabled={submitting}>{submitting ? 'Đang gửi…' : 'Gửi tờ khai'}</button>
     </form>
   );
 }

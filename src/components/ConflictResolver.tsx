@@ -35,7 +35,7 @@ function isExternal(side: Side) {
   return side.status === 'external';
 }
 
-const METHOD_LABEL: Record<string, string> = { move_unit: 'Chuyển căn', cancel_booking: 'Hủy booking', acknowledge: 'Xử lý trên OTA / bên ngoài' };
+const METHOD_LABEL: Record<string, string> = { move_unit: 'Chuyển căn', cancel_booking: 'Hủy booking', acknowledge: 'Xử lý trên OTA / bên ngoài', ota_update: 'Thay đổi trên OTA' };
 const shortDay = (d: string) => `${d.slice(8)}/${d.slice(5, 7)}`;
 
 /**

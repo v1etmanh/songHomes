@@ -5,6 +5,7 @@ import { CheckCircle2, FileCheck2, Plus, ShieldCheck, Trash2, UserCheck } from '
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { extractErrorMessage } from './ErrorMessage';
+import { fieldClass, filled, missingFields, missingMessage } from '../lib/residenceForm';
 
 interface ResidenceRow {
   _id: Id<'residenceRegistrations'>;
@@ -78,6 +79,8 @@ export function ResidenceRegistrationSection({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [prefilledOnce, setPrefilledOnce] = useState(false);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const cls = (key: string, base = 'field-input') => fieldClass(base, missing, key);
 
   useEffect(() => {
     setCheckInDate(defaultCheckIn);
@@ -95,8 +98,26 @@ export function ResidenceRegistrationSection({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validEmail || submitting || disabled) return;
-    setSubmitting(true);
     setFeedback(null);
+    // Every field is mandatory: name the missing ones instead of sending a partial declaration.
+    const gaps = missingFields([
+      { key: 'fullName', label: 'Họ và tên', filled: filled(fullName) },
+      { key: 'documentNumber', label: 'Số CCCD / Hộ chiếu', filled: filled(documentNumber) },
+      { key: 'nationality', label: 'Quốc tịch', filled: filled(nationality) },
+      { key: 'dateOfBirth', label: 'Ngày sinh', filled: filled(dateOfBirth) },
+      { key: 'phone', label: 'Số điện thoại', filled: filled(phone) },
+      { key: 'checkInDate', label: 'Từ ngày', filled: filled(checkInDate) },
+      { key: 'checkOutDate', label: 'Đến ngày', filled: filled(checkOutDate) },
+      { key: 'permanentAddress', label: 'Địa chỉ thường trú', filled: filled(permanentAddress) },
+      { key: 'reason', label: 'Lý do', filled: filled(reason) },
+      { key: 'consent', label: 'Đồng ý lưu thông tin', filled: consent },
+    ]);
+    setMissing(new Set(gaps.map((gap) => gap.key)));
+    if (gaps.length) {
+      setFeedback({ kind: 'err', text: missingMessage(gaps) });
+      return;
+    }
+    setSubmitting(true);
     try {
       await registerForGuest({
         confirmationCode,
@@ -104,18 +125,25 @@ export function ResidenceRegistrationSection({
         fullName: fullName.trim(),
         documentType,
         documentNumber: documentNumber.trim(),
-        nationality: nationality.trim() || 'Việt Nam',
-        dateOfBirth: dateOfBirth.trim() || undefined,
-        phone: phone.trim() || undefined,
-        permanentAddress: permanentAddress.trim() || undefined,
+        nationality: nationality.trim(),
+        dateOfBirth: dateOfBirth.trim(),
+        phone: phone.trim(),
+        permanentAddress: permanentAddress.trim(),
         registrationType,
         checkInDate,
         checkOutDate,
         reason: reason.trim() || undefined,
         consent,
       });
+      // The next declaration is a different person: clear their identity so the
+      // previous guest's name is never submitted twice (WEBSITE (1).pdf).
+      setFullName('');
       setDocumentNumber('');
+      setDateOfBirth('');
+      setPhone('');
+      setPermanentAddress('');
       setConsent(false);
+      setMissing(new Set());
       setFeedback({
         kind: 'ok',
         text:
@@ -263,6 +291,7 @@ export function ResidenceRegistrationSection({
                   onSubmit={(e) => void handleSubmit(e)}
                   className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
                   data-testid="residence-registration-form"
+                  noValidate
                 >
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-slate-900">Thêm tờ khai mới</h3>
@@ -310,7 +339,7 @@ export function ResidenceRegistrationSection({
                       <input
                         id="res-fullname"
                         type="text"
-                        className="field-input"
+                        className={cls('fullName', 'field-input')}
                         placeholder="Nguyễn Văn A"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
@@ -341,7 +370,7 @@ export function ResidenceRegistrationSection({
                       <input
                         id="res-docnum"
                         type="text"
-                        className="field-input font-mono"
+                        className={cls('documentNumber', 'field-input font-mono')}
                         placeholder="048099001234"
                         value={documentNumber}
                         onChange={(e) => setDocumentNumber(e.target.value)}
@@ -351,12 +380,12 @@ export function ResidenceRegistrationSection({
 
                     <div>
                       <label className="field-label" htmlFor="res-nationality">
-                        Quốc tịch
+                        Quốc tịch *
                       </label>
                       <input
                         id="res-nationality"
                         type="text"
-                        className="field-input"
+                        className={cls('nationality', 'field-input')}
                         placeholder="Việt Nam"
                         value={nationality}
                         onChange={(e) => setNationality(e.target.value)}
@@ -365,12 +394,12 @@ export function ResidenceRegistrationSection({
 
                     <div>
                       <label className="field-label" htmlFor="res-dob">
-                        Ngày sinh
+                        Ngày sinh *
                       </label>
                       <input
                         id="res-dob"
                         type="date"
-                        className="field-input"
+                        className={cls('dateOfBirth', 'field-input')}
                         value={dateOfBirth}
                         onChange={(e) => setDateOfBirth(e.target.value)}
                       />
@@ -378,12 +407,12 @@ export function ResidenceRegistrationSection({
 
                     <div>
                       <label className="field-label" htmlFor="res-phone">
-                        Số điện thoại liên hệ
+                        Số điện thoại liên hệ *
                       </label>
                       <input
                         id="res-phone"
                         type="tel"
-                        className="field-input"
+                        className={cls('phone', 'field-input')}
                         placeholder="0905 123 456"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -397,7 +426,7 @@ export function ResidenceRegistrationSection({
                       <input
                         id="res-checkin"
                         type="date"
-                        className="field-input"
+                        className={cls('checkInDate', 'field-input')}
                         value={checkInDate}
                         onChange={(e) => setCheckInDate(e.target.value)}
                         required
@@ -411,7 +440,7 @@ export function ResidenceRegistrationSection({
                       <input
                         id="res-checkout"
                         type="date"
-                        className="field-input"
+                        className={cls('checkOutDate', 'field-input')}
                         value={checkOutDate}
                         onChange={(e) => setCheckOutDate(e.target.value)}
                         required
@@ -420,12 +449,12 @@ export function ResidenceRegistrationSection({
 
                     <div className="sm:col-span-2">
                       <label className="field-label" htmlFor="res-address">
-                        Địa chỉ thường trú (Tỉnh/Thành, Quận/Huyện)
+                        Địa chỉ thường trú (Tỉnh/Thành, Quận/Huyện) *
                       </label>
                       <input
                         id="res-address"
                         type="text"
-                        className="field-input"
+                        className={cls('permanentAddress', 'field-input')}
                         placeholder="Số 12 Lê Duẩn, Hải Châu, Đà Nẵng"
                         value={permanentAddress}
                         onChange={(e) => setPermanentAddress(e.target.value)}
@@ -434,12 +463,12 @@ export function ResidenceRegistrationSection({
 
                     <div className="sm:col-span-2">
                       <label className="field-label" htmlFor="res-reason">
-                        Lý do / Ghi chú khai báo
+                        Lý do / Ghi chú khai báo *
                       </label>
                       <input
                         id="res-reason"
                         type="text"
-                        className="field-input"
+                        className={cls('reason', 'field-input')}
                         placeholder="Lưu trú du lịch / công tác..."
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
@@ -463,7 +492,7 @@ export function ResidenceRegistrationSection({
                     </div>
                   ) : null}
 
-                  <label className="mt-4 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+                  <label className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs ${missing.has('consent') ? 'border-red-400 bg-red-50 text-red-900' : 'border-sky-200 bg-sky-50 text-sky-950'}`}>
                     <input type="checkbox" className="mt-0.5" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
                     <span>Tôi đồng ý cho Sóng Homestay lưu và xử lý thông tin trên để hỗ trợ khai báo lưu trú. Dữ liệu dự kiến được lưu tối đa 180 ngày và không đưa vào nguồn iCal.</span>
                   </label>
@@ -472,7 +501,7 @@ export function ResidenceRegistrationSection({
                     <button
                       type="submit"
                       className="btn-primary inline-flex items-center gap-1.5"
-                      disabled={submitting || !fullName.trim() || !documentNumber.trim() || !consent}
+                      disabled={submitting}
                     >
                       <Plus className="h-4 w-4" aria-hidden="true" />
                       {submitting
